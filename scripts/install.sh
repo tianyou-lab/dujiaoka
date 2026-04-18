@@ -716,8 +716,8 @@ install_app_dependencies() {
     log_info "Composer 依赖已安装"
 }
 
-setup_env_file() {
-    log_step "生成 .env"
+write_env_file() {
+    log_step "写入 .env 配置"
     cd "$WEB_ROOT"
 
     if [ -f .env ]; then
@@ -736,24 +736,55 @@ setup_env_file() {
             echo "${k}=${v}" >> .env
         fi
     }
-    set_env "APP_URL"     "https://${DOMAIN}"
-    set_env "DB_HOST"     "127.0.0.1"
-    set_env "DB_PORT"     "3306"
-    set_env "DB_DATABASE" "$DB_NAME"
-    set_env "DB_USERNAME" "$DB_USER"
-    set_env "DB_PASSWORD" "$DB_PASS"
-    set_env "REDIS_HOST"  "127.0.0.1"
-    set_env "REDIS_PORT"  "6379"
+    set_env "APP_URL"      "https://${DOMAIN}"
+    set_env "APP_TIMEZONE" "Asia/Shanghai"
+    set_env "DB_HOST"      "127.0.0.1"
+    set_env "DB_PORT"      "3306"
+    set_env "DB_DATABASE"  "$DB_NAME"
+    set_env "DB_USERNAME"  "$DB_USER"
+    set_env "DB_PASSWORD"  "$DB_PASS"
+    set_env "REDIS_HOST"   "127.0.0.1"
+    set_env "REDIS_PORT"   "6379"
     set_env "CACHE_DRIVER"      "redis"
     set_env "QUEUE_CONNECTION"  "redis"
     set_env "SESSION_DRIVER"    "redis"
 
+    # 旧版 config/app.php 硬编码 'PRC' 时区，新 PHP/glibc 已废弃
+    # 直接 patch 为可被 .env 覆盖的形式（幂等：第二次匹配不到就跳过）
+    if [ -f config/app.php ] && grep -q "'timezone' => 'PRC'" config/app.php; then
+        sed -i "s/'timezone' => 'PRC',/'timezone' => env('APP_TIMEZONE', 'Asia\/Shanghai'),/" config/app.php
+        log_info "已 patch config/app.php 的 PRC 时区"
+    fi
+
     chown www-data:www-data .env
     chmod 664 .env
+    log_info ".env 已写入（APP_KEY 待生成）"
+}
 
-    # 生成 APP_KEY
+generate_app_key() {
+    log_step "生成 APP_KEY"
+    cd "$WEB_ROOT"
+    # 此时数据库已初始化（settings 表存在），artisan 可以正常 boot
     sudo -u www-data -H php artisan key:generate --force
-    log_info ".env + APP_KEY 已生成"
+    log_info "APP_KEY 已写入 .env"
+}
+
+# 清理同模块多份软链（避免 "Module already loaded" 警告）
+dedupe_php_mods() {
+    for sapi in cli fpm; do
+        local confd="/etc/php/${PHP_VERSION}/${sapi}/conf.d"
+        [ -d "$confd" ] || continue
+        for mod in opcache pdo mysqlnd xml redis curl gd zip mbstring intl bcmath fileinfo; do
+            local files=( "$confd"/*-"${mod}".ini )
+            [ -e "${files[0]}" ] || continue
+            if [ ${#files[@]} -gt 1 ]; then
+                for f in "${files[@]:1}"; do
+                    [ -L "$f" ] && rm -f "$f" && log_info "  去重: 删除 ${sapi}/$(basename "$f")"
+                done
+            fi
+        done
+    done
+    systemctl restart "php${PHP_VERSION}-fpm" 2>/dev/null || true
 }
 
 init_database() {
@@ -995,8 +1026,10 @@ BANNER
     configure_database
     install_source
     install_app_dependencies
-    setup_env_file
-    init_database
+    write_env_file       # 1) 先写 .env（包括 DB 凭据 + Asia/Shanghai 时区）
+    init_database        # 2) 用 raw mysql CLI 导入 install.sql
+    generate_app_key     # 3) DB schema 就位后才能让 artisan 正常 boot
+    dedupe_php_mods      # 4) 兜底清理重复扩展软链
     finalize_app
     configure_nginx
     apply_ssl
