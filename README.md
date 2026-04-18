@@ -131,6 +131,146 @@
 
 ![](https://files.mdnice.com/user/39773/0d9494c7-9cbe-4dea-b168-05f36d55273c.png)
 
+## :package: 快速部署
+
+### 方式一：服务器一键部署（推荐）
+
+适用于全新的 Ubuntu 20.04+ / Debian 11+ 服务器，一键完成 LNMP + Redis + Composer + Supervisor 全套环境搭建：
+
+```bash
+bash <(curl -sL https://raw.githubusercontent.com/tianyou-lab/dujiaoka/main/scripts/install.sh)
+```
+
+脚本执行后按照提示输入：
+1. 你的域名（如 `shop.example.com`）
+2. 数据库名称和密码
+3. 是否自动申请 Let's Encrypt SSL 证书
+
+安装完成后访问 `https://你的域名` 进入安装向导。
+
+> 如果服务器已有 LNMP 环境，也可以手动部署，参见 [手动安装文档](debian_manual.md)
+
+---
+
+### 方式二：宝塔面板部署
+
+适用于已安装 [宝塔面板](https://www.bt.cn/) 的服务器。
+
+#### 1. 环境要求
+
+在宝塔面板「软件商店」中安装以下组件：
+- **Nginx** 1.18+
+- **MySQL** 8.0+ 或 **MariaDB** 10.6+
+- **PHP** 8.2+（必须）
+- **Redis** 6.0+
+
+#### 2. PHP 配置
+
+进入宝塔面板 → **软件商店** → **PHP-8.2** → **设置**：
+
+**安装扩展**（PHP → 安装扩展）：
+- `fileinfo`（必装）
+- `redis`（必装）
+- `opcache`（推荐）
+
+**禁用函数**（PHP → 禁用函数）：
+从禁用列表中**删除**以下函数：
+- `putenv`
+- `proc_open`
+- `pcntl_signal`
+- `pcntl_alarm`
+
+#### 3. 创建网站
+
+1. 在宝塔面板 → **网站** → **添加站点**
+2. 域名填写你的域名
+3. 数据库选择 **MySQL**，编码选择 **utf8mb4**
+4. PHP版本选择 **PHP-8.2**
+5. 创建完成后记录数据库名、用户名和密码
+
+#### 4. 上传源代码
+
+**方式A：Git 拉取（推荐）**
+
+在宝塔终端或 SSH 中执行：
+```bash
+cd /www/wwwroot/你的域名
+git clone https://github.com/tianyou-lab/dujiaoka.git .
+```
+
+**方式B：上传压缩包**
+
+从 [Releases](https://github.com/tianyou-lab/dujiaoka/releases) 下载最新版本压缩包，通过宝塔文件管理器上传并解压到网站根目录。
+
+#### 5. 设置运行目录
+
+进入宝塔面板 → **网站** → 你的站点 → **网站目录**：
+- 将**运行目录**设为 `/public`
+
+#### 6. 设置伪静态
+
+进入宝塔面板 → **网站** → 你的站点 → **伪静态**：
+
+选择 **laravel5** 或手动填入：
+```nginx
+location / {
+    try_files $uri $uri/ /index.php?$query_string;
+}
+```
+
+#### 7. 安装 Composer 依赖
+
+在宝塔终端或 SSH 中执行：
+```bash
+cd /www/wwwroot/你的域名
+composer install --no-dev --optimize-autoloader
+```
+
+#### 8. 设置目录权限
+
+在宝塔终端或 SSH 中执行：
+```bash
+cd /www/wwwroot/你的域名
+chown -R www:www .
+chmod -R 755 .
+chmod -R 775 storage bootstrap/cache
+```
+
+#### 9. 访问安装向导
+
+浏览器访问 `https://你的域名`，按提示填写数据库信息完成安装。
+
+#### 10. 配置队列（重要）
+
+在宝塔面板 → **软件商店** → 搜索安装 **Supervisor 管理器**。
+
+进入 Supervisor 管理器 → **添加守护进程**：
+- **名称**: `dujiaoka-queue`
+- **运行用户**: `www`
+- **运行目录**: `/www/wwwroot/你的域名`
+- **启动命令**: `php artisan queue:work --sleep=3 --tries=3 --max-time=3600`
+- **进程数量**: `1`
+
+保存后确认进程状态为「运行中」。
+
+#### 11. 安装后配置
+
+1. 编辑网站根目录下的 `.env` 文件：
+   - 将 `APP_DEBUG=true` 改为 `APP_DEBUG=false`
+   - 如使用宝塔 CDN 或反代，配置 `TRUSTED_PROXIES=127.0.0.1`
+2. 访问 `https://你的域名/admin` 登录管理后台
+3. 默认账号：`admin`，密码：`admin`
+4. **立即修改默认密码**
+
+---
+
+### 方式三：手动安装
+
+适用于熟悉 Linux 运维的用户，参见完整手动安装文档：
+- [Debian/Ubuntu 手动安装教程](debian_manual.md)
+
+---
+
 ## :book: 文档和教程
 
 ### 官方文档
