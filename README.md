@@ -132,7 +132,7 @@ bash <(curl -sL https://raw.githubusercontent.com/tianyou-lab/dujiaoka/main/scri
 
 ---
 
-### 方式四：Debian/Ubuntu 原生手动安装
+### 方式二：Debian/Ubuntu 原生手动安装
 
 适用于熟悉 Linux 运维的用户，参见完整手动安装文档：
 - [Debian/Ubuntu 手动安装教程](debian_manual.md)
