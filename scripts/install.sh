@@ -167,14 +167,19 @@ detect_state() {
         DETAIL[php]="v${v} ($php_bin)"
         PHP_BIN="$php_bin"
 
-        # 探查扩展：用 extension_loaded() 比 `php -m` 输出可靠
-        # （`Zend OPcache` 这种带空格/混合大小写的名字 -m 里输出和 load 名不同）
+        # 探查扩展：尽量用扩展自带的标志函数判定，避免 extension_loaded 因
+        # 内部名（如 "Zend OPcache"）大小写/空格不匹配而假阴性
         local missing_ext=()
         for ext in "${REQ_PHP_EXT[@]}"; do
-            local probe="$ext"
-            [ "$ext" = "mysql" ] && probe="pdo_mysql"
-            [ "$ext" = "dom" ]   && probe="dom"
-            if ! timeout 5 "$php_bin" -r "exit(extension_loaded('${probe}') ? 0 : 1);" >/dev/null 2>&1; then
+            local check
+            case "$ext" in
+                mysql)    check='extension_loaded("pdo_mysql")' ;;
+                opcache)  check='function_exists("opcache_reset")' ;;
+                pcntl)    check='function_exists("pcntl_signal")' ;;
+                fileinfo) check='function_exists("finfo_file")' ;;
+                *)        check="extension_loaded('${ext}')" ;;
+            esac
+            if ! timeout 5 "$php_bin" -r "exit(${check} ? 0 : 1);" >/dev/null 2>&1; then
                 missing_ext+=("$ext")
             fi
         done
@@ -464,31 +469,28 @@ apply_plan() {
     log_info "apt 安装完成"
 
     # 某些 PHP 扩展（特别是 opcache）apt 装好后，CLI conf.d 里的软链
-    # 不一定自动建好，导致 `php -r 'extension_loaded("opcache")'` 仍为 false
-    # 这里显式 phpenmod + 兜底软链，幂等且零代价
-    if [ "$_has_php_pkg" = "1" ]; then
-        if command -v phpenmod >/dev/null 2>&1; then
-            for mod in opcache pcntl mbstring bcmath intl xml curl gd zip mysql redis fileinfo; do
-                phpenmod -v "$PHP_VERSION" "$mod" 2>/dev/null || true
+    # 不一定自动建好。phpenmod 本身已经幂等且只动未启用的模块，
+    # 不会造成"Module already loaded"。这里只跑 phpenmod，
+    # 不再做手动软链兜底（之前的兜底会和 apt 已建的不同优先级软链冲突）
+    if [ "$_has_php_pkg" = "1" ] && command -v phpenmod >/dev/null 2>&1; then
+        for mod in opcache pcntl mbstring bcmath intl xml curl gd zip mysql redis fileinfo; do
+            phpenmod -v "$PHP_VERSION" "$mod" 2>/dev/null || true
+        done
+        # 清理可能残留的重复软链（同一模块出现多个 *-mod.ini）
+        for sapi in cli fpm; do
+            local confd="/etc/php/${PHP_VERSION}/${sapi}/conf.d"
+            [ -d "$confd" ] || continue
+            for mod in opcache pdo mysqlnd xml redis; do
+                local files=( "$confd"/*-"${mod}".ini )
+                if [ ${#files[@]} -gt 1 ]; then
+                    local keep="${files[0]}"
+                    for f in "${files[@]:1}"; do
+                        [ -L "$f" ] && rm -f "$f"
+                    done
+                    log_info "  去重: ${sapi} 保留 $(basename "$keep")"
+                fi
             done
-        fi
-        # 兜底：如果 phpenmod 没生效，直接手动软链 mods-available → conf.d
-        local mods_avail="/etc/php/${PHP_VERSION}/mods-available"
-        if [ -d "$mods_avail" ]; then
-            for sapi in cli fpm; do
-                local confd="/etc/php/${PHP_VERSION}/${sapi}/conf.d"
-                [ -d "$confd" ] || continue
-                for ini in "$mods_avail"/*.ini; do
-                    [ -f "$ini" ] || continue
-                    local mod_name
-                    mod_name=$(basename "$ini" .ini)
-                    local prio="20"
-                    [ "$mod_name" = "opcache" ] && prio="10"
-                    local link="${confd}/${prio}-${mod_name}.ini"
-                    [ -e "$link" ] || ln -sf "$ini" "$link"
-                done
-            done
-        fi
+        done
         systemctl restart "php${PHP_VERSION}-fpm" 2>/dev/null || true
         log_info "已对 PHP ${PHP_VERSION} 全 SAPI 启用业务所需扩展"
     fi
