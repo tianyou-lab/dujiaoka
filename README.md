@@ -198,9 +198,12 @@ cd /www/wwwroot/你的域名
 git clone https://github.com/tianyou-lab/dujiaoka.git .
 ```
 
-**方式B：上传压缩包**
+**方式B：下载压缩包**
 
-从 [Releases](https://github.com/tianyou-lab/dujiaoka/releases) 下载最新版本压缩包，通过宝塔文件管理器上传并解压到网站根目录。
+从 GitHub 下载最新版本源码压缩包：
+- [下载 ZIP](https://github.com/tianyou-lab/dujiaoka/archive/refs/heads/main.zip)
+
+下载后通过宝塔文件管理器上传到网站根目录并解压。解压后将文件移动到网站根目录下（确保 `public` 目录在网站根目录下）。
 
 #### 5. 设置运行目录
 
