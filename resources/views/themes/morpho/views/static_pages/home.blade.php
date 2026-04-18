@@ -44,7 +44,7 @@
                         <div class="swiper-wrapper">
                             @foreach($slides as $slide)
                             <div class="swiper-slide">
-                                <div class="row justify-content-center" style="min-height: 30rem;">
+                                <div class="row justify-content-center" style="min-height: 14rem;">
                                     <div class="col-xxl-10">
                                         <div class="row align-items-center h-100">
                                             @if($slide['type'] === 'notice')
@@ -53,8 +53,8 @@
                                                         <i class="ci-bell fs-4 text-muted me-2"></i>
                                                         <span class="text-muted fw-medium">公告</span>
                                                     </div>
-                                                    <div class="notice-content text-body fs-6 lh-lg pe-2" 
-                                                         style="height: 22rem; overflow-y: auto;">
+                                                    <div class="notice-content text-body fs-6 lh-lg pe-2"
+                                                         style="max-height: 8rem; overflow-y: auto;">
                                                         {!! purifyHtml($slide['content']) !!}
                                                     </div>
                                                 </div>
