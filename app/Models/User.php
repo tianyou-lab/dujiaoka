@@ -20,10 +20,6 @@ class User extends Authenticatable implements MustVerifyEmail
         'password',
         'nickname',
         'phone',
-        'balance',
-        'total_spent',
-        'level_id',
-        'status',
         'last_login_at',
         'last_login_ip',
     ];
@@ -93,8 +89,9 @@ class User extends Authenticatable implements MustVerifyEmail
     // 检查是否可以升级
     public function canUpgradeLevel()
     {
+        $currentMinSpent = $this->level?->min_spent ?? 0;
         $nextLevel = UserLevel::where('min_spent', '>', $this->total_spent)
-            ->where('min_spent', '>', $this->level->min_spent ?? 0)
+            ->where('min_spent', '>', $currentMinSpent)
             ->orderBy('min_spent', 'asc')
             ->first();
 
@@ -104,8 +101,9 @@ class User extends Authenticatable implements MustVerifyEmail
     // 获取下一个等级
     public function getNextLevel()
     {
+        $currentMinSpent = $this->level?->min_spent ?? 0;
         return UserLevel::where('min_spent', '>', $this->total_spent)
-            ->where('min_spent', '>', $this->level->min_spent ?? 0)
+            ->where('min_spent', '>', $currentMinSpent)
             ->orderBy('min_spent', 'asc')
             ->first();
     }
@@ -126,57 +124,91 @@ class User extends Authenticatable implements MustVerifyEmail
         return false;
     }
 
-    // 增加余额
     public function addBalance($amount, $type = 'recharge', $description = '', $relatedOrderSn = null, $adminId = null)
     {
-        $balanceBefore = $this->balance;
-        $balanceAfter = $balanceBefore + $amount;
-
-        $this->update(['balance' => $balanceAfter]);
-
-        // 记录余额变动
-        $this->balanceRecords()->create([
-            'type' => $type,
-            'amount' => $amount,
-            'balance_before' => $balanceBefore,
-            'balance_after' => $balanceAfter,
-            'description' => $description,
-            'related_order_sn' => $relatedOrderSn,
-            'admin_id' => $adminId,
-        ]);
-
-        return $this;
-    }
-
-    // 扣除余额
-    public function deductBalance($amount, $type = 'consume', $description = '', $relatedOrderSn = null)
-    {
-        if ($this->balance < $amount) {
-            throw new \Exception('余额不足');
+        if ($amount <= 0) {
+            throw new \InvalidArgumentException('加款金额必须大于 0');
         }
 
-        $balanceBefore = $this->balance;
-        $balanceAfter = $balanceBefore - $amount;
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($amount, $type, $description, $relatedOrderSn, $adminId) {
+            $user = User::where('id', $this->id)->lockForUpdate()->first();
 
-        $this->update(['balance' => $balanceAfter]);
+            if ($relatedOrderSn && UserBalanceRecord::where('user_id', $this->id)
+                    ->where('type', $type)
+                    ->where('related_order_sn', $relatedOrderSn)
+                    ->exists()) {
+                return $this;
+            }
 
-        // 记录余额变动
-        $this->balanceRecords()->create([
-            'type' => $type,
-            'amount' => -$amount,
-            'balance_before' => $balanceBefore,
-            'balance_after' => $balanceAfter,
-            'description' => $description,
-            'related_order_sn' => $relatedOrderSn,
-        ]);
+            $balanceBefore = $user->balance;
+            $user->increment('balance', $amount);
+            $balanceAfter = $balanceBefore + $amount;
 
-        return $this;
+            $this->balanceRecords()->create([
+                'type' => $type,
+                'amount' => $amount,
+                'balance_before' => $balanceBefore,
+                'balance_after' => $balanceAfter,
+                'description' => $description,
+                'related_order_sn' => $relatedOrderSn,
+                'admin_id' => $adminId,
+            ]);
+
+            $this->refresh();
+            return $this;
+        });
+    }
+
+    public function deductBalance($amount, $type = 'consume', $description = '', $relatedOrderSn = null)
+    {
+        if ($amount <= 0) {
+            throw new \InvalidArgumentException('扣款金额必须大于 0');
+        }
+
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($amount, $type, $description, $relatedOrderSn) {
+            $user = User::where('id', $this->id)->lockForUpdate()->first();
+
+            if ($relatedOrderSn && UserBalanceRecord::where('user_id', $this->id)
+                    ->where('type', $type)
+                    ->where('related_order_sn', $relatedOrderSn)
+                    ->exists()) {
+                return $this;
+            }
+
+            if ($user->balance < $amount) {
+                throw new \Exception('余额不足');
+            }
+
+            $balanceBefore = $user->balance;
+            $user->decrement('balance', $amount);
+            $balanceAfter = $balanceBefore - $amount;
+
+            $this->balanceRecords()->create([
+                'type' => $type,
+                'amount' => -$amount,
+                'balance_before' => $balanceBefore,
+                'balance_after' => $balanceAfter,
+                'description' => $description,
+                'related_order_sn' => $relatedOrderSn,
+            ]);
+
+            $this->refresh();
+            return $this;
+        });
     }
 
     // 增加总消费并检查等级升级
     public function addTotalSpent($amount)
     {
         $this->increment('total_spent', $amount);
+        $this->checkAndUpgradeLevel();
+        return $this;
+    }
+
+    // 回滚消费统计（标记失败时使用）
+    public function subtractTotalSpent($amount)
+    {
+        $this->decrement('total_spent', max(0, $amount));
         $this->checkAndUpgradeLevel();
         return $this;
     }

@@ -43,8 +43,17 @@ class AuthController extends Controller
 
         if (Auth::guard('web')->attempt($credentials, $remember)) {
             $request->session()->regenerate();
-            
+
             $user = Auth::guard('web')->user();
+
+            if ($user->status === User::STATUS_DISABLED) {
+                Auth::guard('web')->logout();
+                $request->session()->invalidate();
+                throw ValidationException::withMessages([
+                    'email' => __('auth.disabled'),
+                ]);
+            }
+
             $user->updateLastLogin($request->ip());
             
             RateLimiter::clear($this->throttleKey($request));
@@ -79,19 +88,21 @@ class AuthController extends Controller
 
         $defaultLevel = UserLevel::where('status', 1)->orderBy('min_spent')->first();
 
-        $user = User::create([
+        $user = new User([
             'email' => $request->email,
             'password' => Hash::make($request->password),
             'nickname' => $request->nickname ?: substr($request->email, 0, strpos($request->email, '@')),
-            'level_id' => $defaultLevel ? $defaultLevel->id : 1,
-            'status' => User::STATUS_ACTIVE,
-            'balance' => 0,
-            'total_spent' => 0,
         ]);
+        $user->level_id = $defaultLevel ? $defaultLevel->id : 1;
+        $user->status = User::STATUS_ACTIVE;
+        $user->balance = 0;
+        $user->total_spent = 0;
+        $user->save();
 
         event(new Registered($user));
 
         Auth::guard('web')->login($user);
+        $request->session()->regenerate();
 
         return redirect()->route('user.center')->with('success', '注册成功！');
     }
@@ -179,49 +190,47 @@ class AuthController extends Controller
 
     public function verifyEmail(Request $request)
     {
-        if ($request->user()->hasVerifiedEmail()) {
+        $user = Auth::guard('web')->user();
+        if (!$user) {
+            return redirect()->route('login');
+        }
+        if ($user->hasVerifiedEmail()) {
             return redirect()->route('user.center');
         }
-
-        $request->user()->sendEmailVerificationNotification();
-
+        $user->sendEmailVerificationNotification();
         return back()->with('message', '验证邮件已发送！');
     }
 
-    public function verify(Request $request, $id, $hash)
+    public function verify(EmailVerificationRequest $request)
     {
-        $user = User::findOrFail($id);
-
-        if (! hash_equals((string) $hash, sha1($user->getEmailForVerification()))) {
-            abort(403, '无效的验证链接');
-        }
-
-        if ($user->hasVerifiedEmail()) {
+        if ($request->user()->hasVerifiedEmail()) {
             return redirect()->route('user.center')->with('message', '邮箱已经验证过了');
         }
-
-        if ($user->markEmailAsVerified()) {
-            event(new Verified($user));
-        }
-
+        $request->fulfill();
         return redirect()->route('user.center')->with('success', '邮箱验证成功！');
     }
 
     public function showVerifyNotice(Request $request)
     {
-        return $request->user()->hasVerifiedEmail() 
-            ? redirect()->route('user.center') 
+        $user = Auth::guard('web')->user();
+        if (!$user) {
+            return redirect()->route('login');
+        }
+        return $user->hasVerifiedEmail()
+            ? redirect()->route('user.center')
             : view('themes.morpho.views.auth.verify-email');
     }
 
     public function resendVerification(Request $request)
     {
-        if ($request->user()->hasVerifiedEmail()) {
+        $user = Auth::guard('web')->user();
+        if (!$user) {
+            return redirect()->route('login');
+        }
+        if ($user->hasVerifiedEmail()) {
             return redirect()->route('user.center');
         }
-
-        $request->user()->sendEmailVerificationNotification();
-
+        $user->sendEmailVerificationNotification();
         return back()->with('message', '验证链接已重新发送！');
     }
 }
