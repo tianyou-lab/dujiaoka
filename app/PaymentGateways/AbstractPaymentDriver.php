@@ -6,6 +6,9 @@ use App\PaymentGateways\Contracts\PaymentDriverInterface;
 use App\Models\Order;
 use App\Models\Pay;
 use App\Exceptions\RuleValidationException;
+use App\Services\Orders;
+use App\Services\Payment;
+use App\Services\OrderProcess;
 use Illuminate\Http\Request;
 
 /**
@@ -29,16 +32,16 @@ abstract class AbstractPaymentDriver implements PaymentDriverInterface
      */
     protected function loadGateway(string $orderSN, string $payway): void
     {
-        $orderService = app('App\\Service\\OrderService');
+        $orderService = app(Orders::class);
         $this->order = $orderService->detailOrderSN($orderSN);
-        
+
         if (!$this->order) {
             throw new RuleValidationException(__('dujiaoka.prompt.order_does_not_exist'));
         }
 
-        $payService = app('App\\Service\\PayService');
+        $payService = app(Payment::class);
         $this->payGateway = $payService->detail($this->order->pay_id);
-        
+
         if (!$this->payGateway) {
             throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel'));
         }
@@ -62,7 +65,7 @@ abstract class AbstractPaymentDriver implements PaymentDriverInterface
      */
     protected function err(string $message): \Illuminate\View\View
     {
-        return view('common.error', ['message' => $message]);
+        return view('morpho::errors.error', ['title' => __('dujiaoka.prompt.error'), 'content' => $message, 'url' => null]);
     }
 
     /**
@@ -70,7 +73,7 @@ abstract class AbstractPaymentDriver implements PaymentDriverInterface
      */
     protected function getNotifyUrl(): string
     {
-        return url("/pay/{$this->getName()}/notify_url");
+        return url("/pay/{$this->getName()}/notify");
     }
 
     /**
@@ -78,7 +81,7 @@ abstract class AbstractPaymentDriver implements PaymentDriverInterface
      */
     protected function getReturnUrl(string $orderSN): string
     {
-        return url('detail-order-sn', ['orderSN' => $orderSN]);
+        return url('/order/detail/' . $orderSN);
     }
 
     /**
@@ -96,8 +99,7 @@ abstract class AbstractPaymentDriver implements PaymentDriverInterface
      */
     protected function processPaymentSuccess(string $orderSN, float $amount, string $tradeNo): void
     {
-        $orderProcessService = app('App\\Service\\OrderProcessService');
-        $orderProcessService->completedOrder($orderSN, $amount, $tradeNo);
+        app(OrderProcess::class)->completedOrder($orderSN, $amount, $tradeNo);
     }
 
     /**

@@ -29,7 +29,8 @@ class AlipayDriver extends AbstractPaymentDriver
             return $this->processPayway($payway, $config, $orderData);
 
         } catch (\Exception $e) {
-            return $this->err(__('dujiaoka.prompt.abnormal_payment_channel') . $e->getMessage());
+            \Log::error('AlipayDriver gateway error', ['message' => $e->getMessage()]);
+            return $this->err(__('dujiaoka.prompt.abnormal_payment_channel'));
         }
     }
 
@@ -40,14 +41,14 @@ class AlipayDriver extends AbstractPaymentDriver
     {
         try {
             $orderSN = $request->input('out_trade_no');
-            $orderService = app('App\\Service\\OrderService');
+            $orderService = app(\App\Services\Orders::class);
             $order = $orderService->detailOrderSN($orderSN);
-            
+
             if (!$order) {
                 return 'error';
             }
 
-            $payService = app('App\\Service\\PayService');
+            $payService = app(\App\Services\Payment::class);
             $payGateway = $payService->detail($order->pay_id);
             
             if (!$payGateway || $payGateway->pay_handleroute !== 'alipay') {
@@ -57,16 +58,19 @@ class AlipayDriver extends AbstractPaymentDriver
             $config = $this->buildConfigFromGateway($payGateway);
             $result = $this->verify($config, $request);
 
-            if ($result['status'] === 'success') {
-                $this->processPaymentSuccess(
-                    $result['out_trade_no'],
-                    $result['total_amount'],
-                    $result['trade_no']
-                );
+            if ($result['status'] !== 'success') {
+                return 'fail';
             }
+
+            $this->processPaymentSuccess(
+                $result['out_trade_no'],
+                $result['total_amount'],
+                $result['trade_no']
+            );
 
             return 'success';
         } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Alipay notify exception: ' . $e->getMessage());
             return 'fail';
         }
     }

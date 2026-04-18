@@ -29,6 +29,8 @@ class EpusdtDriver extends AbstractPaymentDriver
                 throw new RuleValidationException(__('dujiaoka.prompt.payment_method_not_supported'));
             }
 
+            $this->validateOrderStatus();
+
             // 构造请求参数
             $parameter = [
                 "amount" => (float)$this->order->actual_price,
@@ -50,7 +52,8 @@ class EpusdtDriver extends AbstractPaymentDriver
             $body = json_decode($response->getBody()->getContents(), true);
             
             if (!isset($body['status_code']) || $body['status_code'] != 200) {
-                throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel') . ': ' . ($body['message'] ?? ''));
+                \Log::error('Epusdt API error', ['response' => $body]);
+                throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel'));
             }
             
             return redirect()->away($body['data']['payment_url']);
@@ -58,7 +61,8 @@ class EpusdtDriver extends AbstractPaymentDriver
         } catch (RuleValidationException $exception) {
             throw $exception;
         } catch (GuzzleException $exception) {
-            throw new RuleValidationException($exception->getMessage());
+            \Log::error('EpusdtDriver gateway error', ['message' => $exception->getMessage()]);
+            throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel'));
         }
     }
 
@@ -87,15 +91,28 @@ class EpusdtDriver extends AbstractPaymentDriver
             return 'fail';
         }
 
-        // 验证签名
         $signature = $this->generateSignature($data, $payGateway->merchant_id);
-        if ($data['signature'] != $signature) {
+        if (!hash_equals($signature, (string)($data['signature'] ?? ''))) {
             return 'fail';
         }
 
         // 处理支付结果
         if (isset($data['status']) && $data['status'] == 2) {
-            $orderService->completedOrder($data['order_id'], $data['amount'], $data['trade_id']);
+            $amount = isset($data['amount']) ? (float)$data['amount'] : 0;
+            $tradeId = (string)($data['trade_id'] ?? '');
+            if ($amount <= 0) {
+                \Illuminate\Support\Facades\Log::warning('Epusdt回调金额无效', ['data' => $data]);
+                return 'fail';
+            }
+            try {
+                app(\App\Services\OrderProcess::class)->completedOrder($data['order_id'], $amount, $tradeId);
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('Epusdt回调履约失败', [
+                    'order_sn' => $data['order_id'],
+                    'error'    => $e->getMessage(),
+                ]);
+                return 'fail';
+            }
         }
 
         return 'ok';

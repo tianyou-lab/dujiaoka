@@ -29,7 +29,7 @@ class TokenpayDriver extends AbstractPaymentDriver
                 throw new RuleValidationException(__('dujiaoka.prompt.payment_method_not_supported'));
             }
 
-            // 构造请求参数
+            $this->validateOrderStatus();
             $parameter = [
                 "ActualAmount" => (float)$this->order->actual_price,
                 "OutOrderId" => $this->order->order_sn, 
@@ -52,7 +52,8 @@ class TokenpayDriver extends AbstractPaymentDriver
             $body = json_decode($response->getBody()->getContents(), true);
             
             if (!isset($body['success']) || $body['success'] != true) {
-                throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel') . ': ' . ($body['message'] ?? ''));
+                \Log::error('TokenPay API error', ['response' => $body]);
+                throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel'));
             }
             
             return redirect()->away($body['data']);
@@ -60,7 +61,8 @@ class TokenpayDriver extends AbstractPaymentDriver
         } catch (RuleValidationException $exception) {
             throw $exception;
         } catch (GuzzleException $exception) {
-            throw new RuleValidationException($exception->getMessage());
+            \Log::error('TokenpayDriver gateway error', ['message' => $exception->getMessage()]);
+            throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel'));
         }
     }
 
@@ -89,15 +91,24 @@ class TokenpayDriver extends AbstractPaymentDriver
             return 'fail';
         }
 
-        // 验证签名
         $signature = $this->generateSignature($data, $payGateway->merchant_key);
-        if ($data['Signature'] != $signature) {
+        if (!hash_equals($signature, (string)($data['Signature'] ?? ''))) {
             return 'fail';
         }
 
         // 处理支付结果
         if (isset($data['Status']) && $data['Status'] == 'TRADE_SUCCESS') {
-            $orderService->completedOrder($data['OutOrderId'], $data['ActualAmount'], $data['OutOrderId']);
+            // 第三方交易号用 TradeId，OutOrderId 是本系统订单号
+            $tradeId = $data['TradeId'] ?? $data['OutOrderId'];
+            try {
+                app(\App\Services\OrderProcess::class)->completedOrder($data['OutOrderId'], $data['ActualAmount'], $tradeId);
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('TokenPay回调履约失败', [
+                    'order_sn' => $data['OutOrderId'],
+                    'error'    => $e->getMessage(),
+                ]);
+                return 'fail';
+            }
         }
 
         return 'success';

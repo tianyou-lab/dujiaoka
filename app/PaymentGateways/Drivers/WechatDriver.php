@@ -23,24 +23,39 @@ class WechatDriver extends AbstractPaymentDriver
             return $this->processPayway($payway, $config, $orderData);
 
         } catch (\Exception $e) {
-            return $this->err(__('dujiaoka.prompt.abnormal_payment_channel') . $e->getMessage());
+            \Log::error('WechatDriver gateway error', ['message' => $e->getMessage()]);
+            return $this->err(__('dujiaoka.prompt.abnormal_payment_channel'));
         }
     }
 
     public function notify(Request $request): string
     {
         try {
-            $orderSN = $request->input('out_trade_no');
-            $orderService = app('App\\Service\\OrderService');
+            // 先从 XML body 解析，再取单号（兼容微信 XML 回调）
+            $xmlBody = $request->getContent();
+            $parsed = [];
+            if (!empty($xmlBody)) {
+                $xml = @simplexml_load_string($xmlBody, 'SimpleXMLElement', LIBXML_NOCDATA | LIBXML_NONET);
+                if ($xml !== false) {
+                    $parsed = json_decode(json_encode($xml), true);
+                }
+            }
+            $orderSN = $parsed['out_trade_no'] ?? $request->input('out_trade_no');
+
+            if (empty($orderSN)) {
+                return 'fail';
+            }
+
+            $orderService = app(\App\Services\Orders::class);
             $order = $orderService->detailOrderSN($orderSN);
-            
+
             if (!$order) {
                 return 'error';
             }
 
-            $payService = app('App\\Service\\PayService');
+            $payService = app(\App\Services\Payment::class);
             $payGateway = $payService->detail($order->pay_id);
-            
+
             if (!$payGateway || $payGateway->pay_handleroute !== 'wechat') {
                 return 'error';
             }
@@ -48,16 +63,19 @@ class WechatDriver extends AbstractPaymentDriver
             $config = $this->buildConfigFromGateway($payGateway);
             $result = $this->verify($config, $request);
 
-            if ($result['status'] === 'success') {
-                $this->processPaymentSuccess(
-                    $result['out_trade_no'],
-                    $result['total_amount'],
-                    $result['trade_no']
-                );
+            if ($result['status'] !== 'success') {
+                return 'fail';
             }
+
+            $this->processPaymentSuccess(
+                $result['out_trade_no'],
+                $result['total_amount'],
+                $result['trade_no']
+            );
 
             return 'success';
         } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Wechat notify exception: ' . $e->getMessage());
             return 'fail';
         }
     }
@@ -81,7 +99,7 @@ class WechatDriver extends AbstractPaymentDriver
 
     public function getSupportedPayways(): array
     {
-        return ['wxpay', 'wxscan', 'wxh5', 'wxapp'];
+        return ['wxscan', 'wxh5', 'wxapp'];
     }
 
     public function getName(): string

@@ -28,12 +28,14 @@ class WepayDriver extends AbstractPaymentDriver
                 throw new RuleValidationException(__('dujiaoka.prompt.payment_method_not_supported'));
             }
 
+            $this->validateOrderStatus();
+
             $config = [
                 'app_id' => $this->payGateway->merchant_id,
                 'mch_id' => $this->payGateway->merchant_key,
                 'key' => $this->payGateway->merchant_pem,
                 'notify_url' => url('/pay/wepay/notify'),
-                'return_url' => url('detail-order-sn', ['orderSN' => $this->order->order_sn]),
+                'return_url' => url('/order/detail/' . $this->order->order_sn),
                 'http' => [
                     'timeout' => 10.0,
                     'connect_timeout' => 10.0,
@@ -59,22 +61,25 @@ class WepayDriver extends AbstractPaymentDriver
                         ])->with('title', __('dujiaoka.scan_qrcode_to_pay'));
                         
                     } catch (\Exception $e) {
-                        throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel') . ': ' . $e->getMessage());
+                        \Log::error('WepayDriver wescan error', ['message' => $e->getMessage()]);
+                        throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel'));
                     }
                     break;
                     
                 case 'miniapp':
                     try {
-                        if (!isset($_REQUEST['oid'])) {
-                            throw new RuleValidationException('缺少OpenID参数');
+                        $openid = request()->input('oid');
+                        if (empty($openid) || !preg_match('/^o[A-Za-z0-9_-]{20,30}$/', $openid)) {
+                            throw new RuleValidationException('OpenID 参数无效');
                         }
                         
-                        $orderData['openid'] = $_REQUEST['oid'];
+                        $orderData['openid'] = $openid;
                         $result = YansongdaPay::wechat($config)->miniapp($orderData)->toArray();
                         return response()->json($result);
                         
                     } catch (\Exception $e) {
-                        throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel') . ': ' . $e->getMessage());
+                        \Log::error('WepayDriver miniapp error', ['message' => $e->getMessage()]);
+                        throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel'));
                     }
                     break;
                     
@@ -85,7 +90,8 @@ class WepayDriver extends AbstractPaymentDriver
         } catch (RuleValidationException $exception) {
             throw $exception;
         } catch (\Exception $exception) {
-            throw new RuleValidationException($exception->getMessage());
+            \Log::error('WepayDriver gateway error', ['message' => $exception->getMessage()]);
+            throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel'));
         }
     }
 
@@ -101,14 +107,23 @@ class WepayDriver extends AbstractPaymentDriver
                 'key' => '',
             ];
 
-            // 这里需要根据订单号获取具体的支付配置
-            $data = $request->all();
-            if (empty($data['out_trade_no'])) {
+            // 先从 XML body 解析单号，兼容微信 XML 回调（request->all() 对 XML body 无效）
+            $xmlBody = $request->getContent();
+            $parsed = [];
+            if (!empty($xmlBody)) {
+                $xml = @simplexml_load_string($xmlBody, 'SimpleXMLElement', LIBXML_NOCDATA | LIBXML_NONET);
+                if ($xml !== false) {
+                    $parsed = json_decode(json_encode($xml), true);
+                }
+            }
+            $outTradeNo = $parsed['out_trade_no'] ?? ($request->all()['out_trade_no'] ?? null);
+
+            if (empty($outTradeNo)) {
                 return 'fail';
             }
 
             $orderService = app('App\\Services\\Orders');
-            $order = $orderService->detailOrderSN($data['out_trade_no']);
+            $order = $orderService->detailOrderSN($outTradeNo);
             
             if (!$order) {
                 return 'fail';
@@ -132,7 +147,7 @@ class WepayDriver extends AbstractPaymentDriver
             if ($result['return_code'] === 'SUCCESS' && $result['result_code'] === 'SUCCESS') {
                 // 验证金额
                 $totalFee = $result['total_fee'] / 100;
-                $orderService->completedOrder($result['out_trade_no'], $totalFee, $result['transaction_id']);
+                app(\App\Services\OrderProcess::class)->completedOrder($result['out_trade_no'], $totalFee, $result['transaction_id']);
                 
                 return YansongdaPay::wechat($config)->success();
             }
@@ -140,6 +155,10 @@ class WepayDriver extends AbstractPaymentDriver
             return 'fail';
             
         } catch (\Exception $e) {
+            \Log::error('WepayDriver notify 异常', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return 'fail';
         }
     }

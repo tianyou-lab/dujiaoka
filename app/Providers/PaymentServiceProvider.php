@@ -50,10 +50,10 @@ class PaymentServiceProvider extends ServiceProvider
                     Route::get('{payway}/{orderSN}', 'UnifiedPaymentController@gateway')
                         ->name("payment.{$driver}.gateway");
                     
-                    Route::post('notify_url', 'UnifiedPaymentController@notify')
+                    Route::post('notify', 'UnifiedPaymentController@notify')
                         ->name("payment.{$driver}.notify");
-                    
-                    Route::get('return_url', 'UnifiedPaymentController@returnUrl')
+
+                    Route::get('return', 'UnifiedPaymentController@return')
                         ->name("payment.{$driver}.return");
                 });
             }

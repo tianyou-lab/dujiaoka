@@ -46,6 +46,11 @@ class UnifiedPaymentController extends Controller
                 throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel'));
             }
 
+            // 校验 URL 中的 driver 与订单绑定的支付驱动一致，防止跨驱动接管
+            if ($driver !== $payGateway->pay_handleroute) {
+                throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel'));
+            }
+
             return $paymentDriver->gateway($payway, $orderSN, $order, $payGateway);
 
         } catch (RuleValidationException $exception) {
@@ -92,11 +97,10 @@ class UnifiedPaymentController extends Controller
                 return redirect()->route('home')->with('error', __('dujiaoka.prompt.payment_driver_not_found'));
             }
 
-            // 大多数支付驱动的返回处理都是跳转到订单详情页
             $orderSN = $request->input('orderSN') ?? $request->input('out_trade_no');
-            
-            if ($orderSN) {
-                return redirect()->route('detail-order-sn', ['orderSN' => $orderSN]);
+
+            if ($orderSN && preg_match('/^[A-Za-z0-9]{1,64}$/', $orderSN)) {
+                return redirect('/order/detail/' . $orderSN);
             }
 
             return redirect()->route('home');
