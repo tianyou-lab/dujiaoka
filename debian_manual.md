@@ -2,7 +2,7 @@
 
 - 此教程专为有洁癖的宝宝们准备。不使用任何一键安装脚本。面板党可以退散了！！
 - 推荐环境：Debian 12+ / Ubuntu 22.04+
-- **本版本要求 PHP 8.2+**
+- **本版本推荐 PHP 8.3+**（8.2 可用但部分依赖需手动降级）
 
 ## 手动安装 LNMP
 
@@ -48,18 +48,13 @@ EXIT
 ```
 - 安装 PHP 8.2+
 
-Debian 12 默认仓库包含 PHP 8.2，直接安装：
-```bash
-apt install php8.2 php8.2-fpm php8.2-mysql php8.2-gd php8.2-zip php8.2-opcache php8.2-curl php8.2-mbstring php8.2-intl php8.2-dom php8.2-bcmath php8.2-redis php8.2-fileinfo php8.2-xml
-```
-
-如果使用 Ubuntu 或 Debian 11，需先添加 Sury 仓库：
+推荐使用 PHP 8.3+。需先添加 Sury 仓库：
 ```bash
 apt install -y lsb-release apt-transport-https ca-certificates wget
 wget -qO- https://packages.sury.org/php/apt.gpg | gpg --dearmor -o /usr/share/keyrings/sury-php.gpg
 echo "deb [signed-by=/usr/share/keyrings/sury-php.gpg] https://packages.sury.org/php/ $(lsb_release -sc) main" | tee /etc/apt/sources.list.d/sury-php.list
 apt update
-apt install php8.2 php8.2-fpm php8.2-mysql php8.2-gd php8.2-zip php8.2-opcache php8.2-curl php8.2-mbstring php8.2-intl php8.2-dom php8.2-bcmath php8.2-redis php8.2-fileinfo php8.2-xml
+apt install php8.3 php8.3-fpm php8.3-mysql php8.3-gd php8.3-zip php8.3-opcache php8.3-curl php8.3-mbstring php8.3-intl php8.3-dom php8.3-bcmath php8.3-redis php8.3-fileinfo php8.3-xml
 ```
 
 - 安装 Redis
@@ -67,8 +62,8 @@ apt install php8.2 php8.2-fpm php8.2-mysql php8.2-gd php8.2-zip php8.2-opcache p
 apt install redis-server
 ```
 - 启用函数
-`nano /etc/php/8.2/fpm/php.ini`，`ctrl+w` 搜索 `putenv`，`proc_open`，`pcntl_signal`，`pcntl_alarm` 在 `disable_functions` 一行有就去掉。
-之后 `systemctl restart php8.2-fpm`
+`nano /etc/php/8.3/fpm/php.ini`，`ctrl+w` 搜索 `putenv`，`proc_open`，`pcntl_signal`，`pcntl_alarm` 在 `disable_functions` 一行有就去掉。
+之后 `systemctl restart php8.3-fpm`
 
 ## 下载源代码
 ```bash
@@ -120,7 +115,7 @@ server
         location ~ [^/]\.php(/|$)
         {
           
-            fastcgi_pass  unix:/var/run/php/php8.2-fpm.sock;
+            fastcgi_pass  unix:/var/run/php/php8.3-fpm.sock;
            
             include snippets/fastcgi-php.conf;
         }

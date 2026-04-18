@@ -3,7 +3,7 @@
 <p align="center">
 <img alt="GitHub" src="https://img.shields.io/github/license/outtimes/dujiaoka?style=for-the-badge">
 <img alt="GitHub tag (latest by date)" src="https://img.shields.io/github/v/tag/outtimes/dujiaoka?label=version&style=for-the-badge">
-<img alt="PHP Version" src="https://img.shields.io/static/v1?label=PHP&message=8.2%2B&style=for-the-badge">
+<img alt="PHP Version" src="https://img.shields.io/static/v1?label=PHP&message=8.3%2B&style=for-the-badge">
 <img alt="Laravel Version" src="https://img.shields.io/static/v1?label=Laravel&message=12.x&style=for-the-badge&color=red">
 <img alt="Telegram" src="https://img.shields.io/static/v1?label=Telegram&logo=Telegram&message=@dujiaoka&style=for-the-badge&color=blue&&link=https://t.me/dujiaoka">
 </p>
@@ -93,7 +93,7 @@
 - **Web服务器**: Nginx 1.18+ 或 Apache 2.4+
 - **数据库**: MySQL 8.0+ 或 MariaDB 10.6+
 - **缓存**: Redis 6.0+
-- **PHP版本**: 8.2+ (必需)
+- **PHP版本**: 8.3+ (推荐) / 8.2+ (最低)
 
 ### PHP扩展要求
 - **必需扩展**: `fileinfo`, `redis`, `gd`, `curl`, `zip`, `xml`, `mbstring`
@@ -161,7 +161,7 @@ bash <(curl -sL https://raw.githubusercontent.com/tianyou-lab/dujiaoka/main/scri
 在宝塔面板「软件商店」中安装以下组件：
 - **Nginx** 1.18+
 - **MySQL** 8.0+ 或 **MariaDB** 10.6+
-- **PHP** 8.2+（必须）
+- **PHP** 8.3+（推荐，8.2可用但部分依赖需降级）
 - **Redis** 6.0+
 
 #### 2. PHP 配置

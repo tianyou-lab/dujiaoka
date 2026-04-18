@@ -15,7 +15,7 @@ NC='\033[0m'
 
 REPO_URL="https://github.com/tianyou-lab/dujiaoka.git"
 WEB_ROOT="/var/www/dujiaoka"
-PHP_VERSION="8.2"
+PHP_VERSION="8.3"
 
 log_info()  { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
