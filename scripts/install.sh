@@ -31,15 +31,48 @@ check_root() {
 
 check_os() {
     if [ ! -f /etc/os-release ]; then
-        log_error "无法检测操作系统"
+        log_error "无法检测操作系统（/etc/os-release 不存在）"
         exit 1
     fi
     . /etc/os-release
+
+    # 支持矩阵：Ubuntu 20.04+ / Debian 11+，自动适配最新版
+    #   Ubuntu: 20.04 (focal) / 22.04 (jammy) / 24.04 (noble) / 更新版本 → Ondrej PPA 提供 PHP 8.3
+    #   Debian: 11 (bullseye) / 12 (bookworm) / 13 (trixie) / 更新版本 → Sury 提供 PHP 8.3
     case "$ID" in
-        ubuntu|debian) ;;
-        *) log_error "不支持的操作系统: $ID，仅支持 Ubuntu/Debian"; exit 1 ;;
+        ubuntu)
+            # VERSION_ID 形如 "22.04" / "24.04"；用 awk 转成百位整数便于比较
+            local ver_num
+            ver_num=$(awk -F. '{printf "%d%02d", $1, $2}' <<<"${VERSION_ID:-0.0}")
+            if [ "${ver_num:-0}" -lt 2004 ]; then
+                log_error "Ubuntu 版本过低: ${VERSION_ID}，最低要求 Ubuntu 20.04"
+                log_error "请升级系统或更换服务器"
+                exit 1
+            fi
+            OS_KIND="ubuntu"
+            OS_CODENAME="${UBUNTU_CODENAME:-${VERSION_CODENAME:-unknown}}"
+            ;;
+        debian)
+            # Debian VERSION_ID 形如 "11" / "12" / "13"；纯整数比较
+            local ver_major="${VERSION_ID:-0}"
+            if [ "${ver_major:-0}" -lt 11 ]; then
+                log_error "Debian 版本过低: ${VERSION_ID}，最低要求 Debian 11"
+                log_error "请升级系统或更换服务器"
+                exit 1
+            fi
+            OS_KIND="debian"
+            OS_CODENAME="${VERSION_CODENAME:-unknown}"
+            ;;
+        *)
+            log_error "不支持的操作系统: $ID ($PRETTY_NAME)"
+            log_error "本脚本仅支持 Ubuntu 20.04+ 和 Debian 11+"
+            exit 1
+            ;;
     esac
+
     log_info "检测到操作系统: $PRETTY_NAME"
+    log_info "类型: $OS_KIND, 代号: $OS_CODENAME"
+    log_info "将通过 $([ "$OS_KIND" = debian ] && echo 'Sury 仓库' || echo 'Ondrej PPA') 安装 PHP ${PHP_VERSION}"
 }
 
 get_user_input() {
@@ -100,48 +133,50 @@ get_user_input() {
     fi
 }
 
+add_php_repo() {
+    # 为不同发行版统一添加 PHP ${PHP_VERSION} 第三方仓库。
+    # 背景：
+    #   Debian 11 (bullseye) → 默认 PHP 7.4   → 需 Sury
+    #   Debian 12 (bookworm) → 默认 PHP 8.2   → 需 Sury 装 8.3
+    #   Debian 13 (trixie)   → 默认 PHP 8.4   → 需 Sury 装 8.3
+    #   Ubuntu 20.04 (focal) → 默认 PHP 7.4   → 需 Ondrej PPA
+    #   Ubuntu 22.04 (jammy) → 默认 PHP 8.1   → 需 Ondrej PPA
+    #   Ubuntu 24.04 (noble) → 默认 PHP 8.3 ✓ → 仍建议加 PPA 保持一致
+    if [ "$OS_KIND" = "debian" ]; then
+        local sury_list="/etc/apt/sources.list.d/sury-php.list"
+        if [ -f "$sury_list" ]; then
+            log_info "Sury 仓库已配置，跳过"
+        else
+            log_info "添加 Sury PHP 仓库（codename=${OS_CODENAME}）..."
+            wget -qO- https://packages.sury.org/php/apt.gpg \
+                | gpg --dearmor -o /usr/share/keyrings/sury-php.gpg 2>/dev/null
+            echo "deb [signed-by=/usr/share/keyrings/sury-php.gpg] https://packages.sury.org/php/ ${OS_CODENAME} main" \
+                > "$sury_list"
+            apt update -y
+        fi
+    else
+        if grep -rqs "ondrej/php" /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null; then
+            log_info "Ondrej PPA 已配置，跳过"
+        else
+            log_info "添加 Ondrej PHP PPA（codename=${OS_CODENAME}）..."
+            add-apt-repository -y ppa:ondrej/php
+            apt update -y
+        fi
+    fi
+}
+
 install_packages() {
     log_step "安装系统依赖"
 
     export DEBIAN_FRONTEND=noninteractive
 
-    # --allow-releaseinfo-change: 云厂商镜像的 release 版本号漂移（如 13.3→13.4）会
+    # --allow-releaseinfo-change: 云厂商镜像 release 版本漂移（如 13.3→13.4）会
     # 阻塞后续 apt 操作，必须先放行
     apt update -y --allow-releaseinfo-change
     apt install -y software-properties-common curl wget git unzip \
                    lsb-release apt-transport-https ca-certificates gnupg
 
-    . /etc/os-release
-
-    # PHP ${PHP_VERSION} 在不同发行版里的可用情况：
-    #   - Debian 12 (bookworm): 默认仓库有 8.2，需要 Sury 才能装 8.3
-    #   - Debian 13 (trixie)  : 默认仓库只有 8.4，需要 Sury 才能装 8.3
-    #   - Ubuntu 22.04 (jammy): 默认仓库只有 8.1，需要 Ondrej PPA 才能装 8.3
-    #   - Ubuntu 24.04 (noble): 默认仓库只有 8.3 ✓
-    # 统一策略：Debian 全系走 Sury；Ubuntu 全系走 Ondrej PPA（幂等添加）
-    if [ "$ID" = "debian" ]; then
-        local sury_list="/etc/apt/sources.list.d/sury-php.list"
-        if [ ! -f "$sury_list" ]; then
-            log_info "添加 Sury PHP 仓库 ($(lsb_release -sc))..."
-            wget -qO- https://packages.sury.org/php/apt.gpg \
-                | gpg --dearmor -o /usr/share/keyrings/sury-php.gpg 2>/dev/null
-            echo "deb [signed-by=/usr/share/keyrings/sury-php.gpg] https://packages.sury.org/php/ $(lsb_release -sc) main" \
-                > "$sury_list"
-            apt update -y
-        else
-            log_info "Sury 仓库已存在，跳过添加"
-        fi
-    elif [ "$ID" = "ubuntu" ]; then
-        if ! grep -rqs "ondrej/php" /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null; then
-            log_info "添加 Ondrej PHP PPA..."
-            add-apt-repository -y ppa:ondrej/php
-            apt update -y
-        else
-            log_info "Ondrej PPA 已存在，跳过添加"
-        fi
-    else
-        log_warn "未识别的发行版 ID=$ID，跳过 PHP 仓库配置（将使用系统自带 PHP）"
-    fi
+    add_php_repo
 
     log_info "安装 Nginx..."
     apt install -y nginx
@@ -149,7 +184,7 @@ install_packages() {
     log_info "安装 MariaDB..."
     apt install -y mariadb-server mariadb-client
 
-    log_info "安装 PHP ${PHP_VERSION}..."
+    log_info "安装 PHP ${PHP_VERSION} 全家桶..."
     if ! apt install -y \
         php${PHP_VERSION} \
         php${PHP_VERSION}-fpm \
@@ -166,10 +201,13 @@ install_packages() {
         php${PHP_VERSION}-fileinfo \
         php${PHP_VERSION}-xml; then
         log_error "PHP ${PHP_VERSION} 安装失败"
-        log_error "可用的 PHP 包："
+        log_error "当前系统可用的 PHP 包："
         apt-cache search "^php[0-9]+\.[0-9]+$" || true
-        log_error "提示：如果你在 Debian 13 上看到这个错误，说明 Sury 源未生效，"
-        log_error "  请检查 /etc/apt/sources.list.d/sury-php.list 与 apt update 输出"
+        log_error ""
+        log_error "常见原因："
+        log_error "  1. Sury/Ondrej 源未生效 → 检查 /etc/apt/sources.list.d/ 下相关文件"
+        log_error "  2. 镜像源没同步到该 codename → 换成官方源重试"
+        log_error "  3. apt update 被版本漂移警告打断 → 手动 apt update --allow-releaseinfo-change"
         exit 1
     fi
 
