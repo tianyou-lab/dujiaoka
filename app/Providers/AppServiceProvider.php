@@ -60,9 +60,13 @@ class AppServiceProvider extends ServiceProvider
             $symbol = $symbols[$currency] ?? '¥';
             
             // 设置所有语言文件的货币符号
-            app('translator')->addLines(['dujiaoka.money_symbol' => $symbol], 'zh_CN');
-            app('translator')->addLines(['dujiaoka.money_symbol' => $symbol], 'zh_TW');
-            app('translator')->addLines(['dujiaoka.money_symbol' => $symbol], 'en');
+            // 注意：必须先 trans() 触发 file 加载，否则 addLines 会把整个 group
+            // 标成 "loaded"，结果其它 key 永远拿不到，前端全是 raw key
+            $translator = app('translator');
+            foreach (['zh_CN', 'zh_TW', 'en'] as $loc) {
+                $translator->get('dujiaoka.money_symbol', [], $loc);
+                $translator->addLines(['dujiaoka.money_symbol' => $symbol], $loc);
+            }
         });
     }
 }
