@@ -1,5 +1,4 @@
-* text=auto
-*.css linguist-vendored
-*.scss linguist-vendored
-*.js linguist-vendored
-CHANGELOG.md export-ignore
+* text=auto eol=lf
+
+*.sh    text eol=lf
+*.bash  text eol=lf
