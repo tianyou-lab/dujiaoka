@@ -490,24 +490,66 @@ setup_app_key() {
     fi
 }
 
-run_migrations() {
-    log_step "执行数据库迁移"
+init_database() {
+    # 独角数卡不使用 Laravel migration，全部表结构 + 初始数据在
+    # database/sql/install.sql 里一次性建立。这里直接用 mysql 客户端
+    # 导入 SQL，与 Web 安装向导（Installer::install）保持同一语义。
+    log_step "初始化数据库（导入 install.sql）"
 
     cd "$SITE_PATH"
 
-    sudo -u "$BT_USER" "$PHP_BIN" artisan config:clear
-    sudo -u "$BT_USER" "$PHP_BIN" artisan migrate --force
-    log_info "数据库迁移完成"
-}
+    local install_sql="$SITE_PATH/database/sql/install.sql"
+    local install_lock="$SITE_PATH/install.lock"
 
-run_seed() {
-    log_step "导入初始数据（如存在）"
-
-    cd "$SITE_PATH"
-
-    if sudo -u "$BT_USER" "$PHP_BIN" artisan list 2>/dev/null | grep -q "db:seed"; then
-        sudo -u "$BT_USER" "$PHP_BIN" artisan db:seed --force 2>/dev/null || log_warn "无初始数据或已导入"
+    if [ -f "$install_lock" ]; then
+        log_info "install.lock 已存在，跳过数据库初始化"
+        return 0
     fi
+
+    if [ ! -f "$install_sql" ]; then
+        log_error "未找到 $install_sql，请确认源代码完整"
+        exit 1
+    fi
+
+    local mysql_bin=""
+    if command -v mysql >/dev/null 2>&1; then
+        mysql_bin=$(command -v mysql)
+    elif [ -x "/www/server/mysql/bin/mysql" ]; then
+        mysql_bin="/www/server/mysql/bin/mysql"
+    else
+        log_error "未找到 mysql 客户端（请确认宝塔 MySQL 已安装并在 PATH 中）"
+        exit 1
+    fi
+    log_info "使用 mysql 客户端: $mysql_bin"
+
+    # 幂等检查：如果 settings 表已存在，视为已初始化，直接打锁
+    local settings_exists
+    settings_exists=$(MYSQL_PWD="$DB_PASS" "$mysql_bin" \
+        -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" \
+        -sN -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='${DB_NAME}' AND table_name='settings';" 2>/dev/null || echo 0)
+
+    if [ "${settings_exists:-0}" -gt 0 ]; then
+        log_warn "数据库 ${DB_NAME} 中已存在 settings 表，视为已初始化"
+        log_warn "如需全新安装，请先手动清空数据库中所有表后再运行本脚本"
+        touch "$install_lock"
+        chown "${BT_USER}:${BT_GROUP}" "$install_lock"
+        return 0
+    fi
+
+    log_info "开始导入 install.sql ..."
+    if MYSQL_PWD="$DB_PASS" "$mysql_bin" \
+        -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME" \
+        --default-character-set=utf8mb4 \
+        < "$install_sql"; then
+        log_info "数据库初始化完成"
+    else
+        log_error "install.sql 导入失败，请检查数据库账号权限与字符集"
+        exit 1
+    fi
+
+    touch "$install_lock"
+    chown "${BT_USER}:${BT_GROUP}" "$install_lock"
+    log_info "已创建 install.lock 锁文件（阻止二次访问 /install 向导）"
 }
 
 finalize_filament() {
@@ -648,8 +690,8 @@ BANNER
     detect_redis
     setup_env
     install_dependencies
+    init_database
     setup_app_key
-    run_migrations
     finalize_filament
     fix_permissions
     setup_supervisor
