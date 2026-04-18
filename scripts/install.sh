@@ -714,6 +714,26 @@ install_app_dependencies() {
         sudo -u www-data -H composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
     fi
     log_info "Composer 依赖已安装"
+
+    # Laravel 标准 storage 子目录（git 仓库默认不带，缺了会上传/缓存 500）
+    sudo -u www-data mkdir -p \
+        "$WEB_ROOT/storage/framework/cache/data" \
+        "$WEB_ROOT/storage/framework/sessions" \
+        "$WEB_ROOT/storage/framework/views" \
+        "$WEB_ROOT/storage/framework/testing" \
+        "$WEB_ROOT/storage/logs" \
+        "$WEB_ROOT/storage/app/public" \
+        "$WEB_ROOT/bootstrap/cache" \
+        "$WEB_ROOT/public/uploads"
+    chown -R www-data:www-data "$WEB_ROOT/storage" "$WEB_ROOT/bootstrap/cache" "$WEB_ROOT/public/uploads"
+    chmod -R 775 "$WEB_ROOT/storage" "$WEB_ROOT/bootstrap/cache" "$WEB_ROOT/public/uploads"
+    log_info "storage / bootstrap/cache / public/uploads 目录与权限已就位"
+
+    # Laravel 11+ 默认 lang_path() = lang/，老仓库结构在 resources/lang/，建软链兜底
+    if [ ! -e "$WEB_ROOT/lang" ] && [ -d "$WEB_ROOT/resources/lang" ]; then
+        sudo -u www-data ln -s resources/lang "$WEB_ROOT/lang"
+        log_info "已建立 lang -> resources/lang 软链（Laravel 11+ 兼容）"
+    fi
 }
 
 write_env_file() {
