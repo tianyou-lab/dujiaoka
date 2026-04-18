@@ -178,7 +178,10 @@ fix_disabled_functions() {
         return
     fi
 
-    local need_functions=(putenv proc_open pcntl_signal pcntl_alarm)
+    # exec 是 Laravel storage:link / Filament asset publish 等命令在内部会调用的函数；
+    # 宝塔默认会把它列入 disable_functions，导致 `artisan storage:link` 报
+    # "Call to undefined function Illuminate\Filesystem\exec()"。这里一并解禁。
+    local need_functions=(putenv proc_open pcntl_signal pcntl_alarm exec)
     local changed=0
 
     cp -a "$php_ini" "${php_ini}.dujiaoka.bak.$(date +%s)"
@@ -558,7 +561,19 @@ finalize_filament() {
     cd "$SITE_PATH"
 
     sudo -u "$BT_USER" "$PHP_BIN" artisan filament:upgrade 2>/dev/null || log_warn "filament:upgrade 跳过"
-    sudo -u "$BT_USER" "$PHP_BIN" artisan storage:link 2>/dev/null || true
+
+    # storage:link 在部分 PHP 环境会因 exec 被禁用而失败，fallback 到手动软链
+    if ! sudo -u "$BT_USER" "$PHP_BIN" artisan storage:link 2>/dev/null; then
+        local target="$SITE_PATH/storage/app/public"
+        local link="$SITE_PATH/public/storage"
+        if [ ! -L "$link" ]; then
+            mkdir -p "$target"
+            ln -s "$target" "$link" 2>/dev/null \
+                && chown -h "${BT_USER}:${BT_GROUP}" "$link" \
+                && log_info "已手动创建 public/storage 软链"
+        fi
+    fi
+
     sudo -u "$BT_USER" "$PHP_BIN" artisan config:cache
     sudo -u "$BT_USER" "$PHP_BIN" artisan route:cache 2>/dev/null || true
     sudo -u "$BT_USER" "$PHP_BIN" artisan view:cache 2>/dev/null || true
