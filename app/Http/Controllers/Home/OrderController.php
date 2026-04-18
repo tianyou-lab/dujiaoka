@@ -9,8 +9,10 @@ use App\Models\Goods;
 use App\Models\Carmis;
 use App\Models\Pay;
 use App\Models\User;
+use App\Jobs\OrderExpired;
 use App\Services\OrderProcess;
 use App\Services\CacheManager;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\DB;
@@ -61,10 +63,21 @@ class OrderController extends BaseController
                 throw new RuleValidationException('购物车为空');
             }
 
+            // IP 待支付订单数限制
+            $ipLimit = (int)cfg('order_ip_limits', 0);
+            if ($ipLimit > 0) {
+                $pendingCount = Order::where('buy_ip', $request->getClientIp())
+                    ->where('status', Order::STATUS_WAIT_PAY)
+                    ->count();
+                if ($pendingCount >= $ipLimit) {
+                    throw new RuleValidationException(__('dujiaoka.prompt.order_ip_limits'));
+                }
+            }
+
             // 获取用户信息以决定验证规则
             $user = Auth::guard('web')->user();
             $contactRequired = cfg('contact_required', 'email');
-            
+
             // 根据设置和用户状态决定email字段验证规则
             $emailRule = 'nullable';
             if ($contactRequired === 'email') {
@@ -73,10 +86,16 @@ class OrderController extends BaseController
                 $emailRule = $user ? 'nullable|string' : 'required|string|min:6';
             }
             
+            // 游客且开启查询密码时，search_pwd 必填，否则支付后无法进入详情页
+            $searchPwdRule = 'nullable|string';
+            if (!$user && cfg('is_open_search_pwd', \App\Models\BaseModel::STATUS_CLOSE) == \App\Models\BaseModel::STATUS_OPEN) {
+                $searchPwdRule = 'required|string|min:1';
+            }
+
             $validated = $request->validate([
                 'email' => $emailRule,
                 'payway' => 'required|integer',
-                'search_pwd' => 'nullable|string',
+                'search_pwd' => $searchPwdRule,
                 'cart_items' => 'required|array',
                 'cart_items.*.goods_id' => 'required|integer',
                 'cart_items.*.sub_id' => 'required|integer', 
@@ -115,6 +134,12 @@ class OrderController extends BaseController
                     throw new RuleValidationException("{$goods->gd_name} 需要登录后才能购买");
                 }
 
+                // 服务端校验商品支付方式限制
+                $paymentLimit = $goods->payment_limit ?? [];
+                if (!empty($paymentLimit) && !in_array((int)$validated['payway'], array_map('intval', $paymentLimit))) {
+                    throw new RuleValidationException("{$goods->gd_name} 不支持所选支付方式");
+                }
+
                 $sub = $goods->goods_sub()->find($item['sub_id']);
                 if (!$sub) {
                     throw new RuleValidationException("商品规格不存在");
@@ -122,7 +147,7 @@ class OrderController extends BaseController
 
                 // 计算实际库存
                 $actualStock = $goods->type == Goods::AUTOMATIC_DELIVERY 
-                    ? Carmis::where('sub_id', $item['sub_id'])->where('status', 1)->count()
+                    ? Carmis::where('goods_id', $goods->id)->where('sub_id', $item['sub_id'])->where('status', 1)->count()
                     : $sub->stock;
 
                 // 根据库存模式检查库存
@@ -163,22 +188,47 @@ class OrderController extends BaseController
                     }
                 }
 
+                // 检查最低购买数量
+                if ($goods->buy_min_num > 0 && $item['quantity'] < $goods->buy_min_num) {
+                    throw new RuleValidationException("{$goods->gd_name} 最低购买数量为 {$goods->buy_min_num}");
+                }
+
                 // 应用用户等级折扣
                 $originalPrice = $sub->price;
                 $discountedPrice = $originalPrice * $userDiscountRate;
                 $subtotal = $discountedPrice * $item['quantity'];
                 $totalPrice += $subtotal;
 
-                // 处理自定义字段
+                // 处理自定义字段（含服务端必填校验）
                 $customFields = $item['custom_fields'] ?? [];
+                $formFields = $goods->customer_form_fields ?? [];
+                foreach ($formFields as $fieldCfg) {
+                    $key = $fieldCfg['field_key'] ?? '';
+                    $type = $fieldCfg['field_type'] ?? 'input';
+                    if ($type === 'switch') {
+                        continue; // switch 有默认值 0，不强制
+                    }
+                    if (!isset($customFields[$key]) || trim((string)$customFields[$key]) === '') {
+                        $desc = $fieldCfg['field_description'] ?? $key;
+                        throw new RuleValidationException("{$goods->gd_name} 的「{$desc}」不能为空");
+                    }
+                    // 只允许商品配置中声明的 key
+                }
+                // 过滤掉未声明的 key，防止注入多余字段
+                if (!empty($formFields)) {
+                    $allowedKeys = array_column($formFields, 'field_key');
+                    $customFields = array_intersect_key($customFields, array_flip($allowedKeys));
+                }
                 $infoHtml = '';
                 if (!empty($customFields)) {
                     $infoItems = [];
                     foreach ($customFields as $key => $value) {
-                        $displayValue = in_array($value, ['0', '1', 0, 1]) ? ($value == 1 ? '是' : '否') : $value;
-                        $infoItems[] = "{$key}: {$displayValue}";
+                        $safeKey = htmlspecialchars((string)$key, ENT_QUOTES, 'UTF-8');
+                        $safeValue = htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+                        $displayValue = in_array($value, ['0', '1', 0, 1]) ? ($value == 1 ? '是' : '否') : $safeValue;
+                        $infoItems[] = "{$safeKey}: {$displayValue}";
                     }
-                    $infoHtml = implode('<br>', $infoItems);
+                    $infoHtml = implode("\n", $infoItems);
                 }
 
                 $orderItems[] = [
@@ -201,7 +251,7 @@ class OrderController extends BaseController
             }
 
             if ($payway->china_only) {
-                $isoCode = get_ip_country($request->getClientIp());
+                $isoCode = getIpCountry($request->getClientIp());
                 if($isoCode != 'CN') {
                     throw new RuleValidationException(__('dujiaoka.prompt.payment_china_only'));
                 }
@@ -241,6 +291,7 @@ class OrderController extends BaseController
                 'email' => $validated['email'],
                 'total_price' => $originalTotalPrice,
                 'actual_price' => $totalPrice,
+                'paid_price' => 0,
                 'coupon_discount_price' => 0, // 暂时不支持优惠券
                 'user_discount_rate' => $userDiscountRate,
                 'user_discount_amount' => $userDiscountAmount,
@@ -262,19 +313,64 @@ class OrderController extends BaseController
                 $order->orderItems()->create($itemData);
             }
 
-            // 如果是下单即减库存模式，锁定库存
+            // 如果是下单即减库存模式，原子检查+锁定库存
             if ($stockMode == 1) {
                 foreach ($cartItems as $item) {
-                    CacheManager::lockStock($item['sub_id'], $item['quantity'], $orderSn);
+                    $sub = \App\Models\GoodsSub::find($item['sub_id']);
+                    $goods = \App\Models\Goods::find($item['goods_id']);
+                    $actualStock = $goods && $goods->type == \App\Models\Goods::AUTOMATIC_DELIVERY
+                        ? \App\Models\Carmis::where('goods_id', $item['goods_id'])->where('sub_id', $item['sub_id'])->where('status', 1)->count()
+                        : ($sub ? $sub->stock : 0);
+                    if (!CacheManager::checkAndLockStock($item['sub_id'], $item['quantity'], $actualStock, $orderSn)) {
+                        throw new RuleValidationException("库存不足，请重试");
+                    }
                 }
             }
 
             DB::commit();
+
+            // 事务提交后执行非DB逻辑，避免假rollback
             $this->queueCookie($order->order_sn);
-            
+
+            // 调度过期任务（仅待支付订单需要）
+            if ($paymentMethod !== Order::PAYMENT_BALANCE) {
+                $expiredMinutes = cfg('order_expire_time', 5);
+                OrderExpired::dispatch($orderSn)->delay(Carbon::now()->addMinutes($expiredMinutes));
+            }
+
+            // 全余额支付：立即履约（事务外独立执行）
+            if ($paymentMethod == Order::PAYMENT_BALANCE) {
+                try {
+                    $this->orderProcessService->completedOrderByBalance($orderSn);
+                } catch (\Exception $e) {
+                    // 履约失败：补偿退还余额，重置订单为异常状态
+                    DB::transaction(function () use ($order, $balanceUsed, $user, $orderSn, $e) {
+                        $order->status = Order::STATUS_ABNORMAL;
+                        $order->save();
+                        if ($balanceUsed > 0 && $user) {
+                            $user->addBalance($balanceUsed, 'refund', '余额支付履约失败退款', $orderSn);
+                        }
+                    });
+                    \Illuminate\Support\Facades\Log::error('余额支付履约失败，已退款', [
+                        'order_sn' => $orderSn,
+                        'error'    => $e->getMessage(),
+                    ]);
+                    return response()->json([
+                        'success' => false,
+                        'message' => '支付处理失败，余额已退还，请重试',
+                    ]);
+                }
+            }
+
+            $redirectUrl = url('/order/bill/' . $order->order_sn);
+            if (!$user) {
+                $pwd = !empty($validated['search_pwd']) ? $validated['search_pwd'] : '__owner__';
+                session(['order_search_pwd_' . $order->order_sn => $pwd]);
+            }
+
             return response()->json([
                 'success' => true,
-                'redirect' => url('/order/bill/' . $order->order_sn)
+                'redirect' => $redirectUrl
             ]);
 
         } catch (RuleValidationException $exception) {
@@ -293,13 +389,14 @@ class OrderController extends BaseController
             if (isset($stockMode) && $stockMode == 1 && isset($orderSn)) {
                 CacheManager::unlockStock($orderSn);
             }
+            \Log::error('订单创建失败', [
+                'message' => $exception->getMessage(),
+                'trace' => $exception->getTraceAsString(),
+                'file' => $exception->getFile() . ':' . $exception->getLine(),
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => '订单创建失败，请重试',
-                'debug' => config('app.debug') ? [
-                    'trace' => $exception->getTraceAsString(),
-                    'file' => $exception->getFile() . ':' . $exception->getLine()
-                ] : null
             ]);
         }
     }
@@ -310,15 +407,13 @@ class OrderController extends BaseController
      */
     private function queueCookie(string $orderSN) : void
     {
-        // 设置订单cookie
         $cookies = Cookie::get('dujiaoka_orders');
-        if (empty($cookies)) {
-            Cookie::queue('dujiaoka_orders', json_encode([$orderSN]));
-        } else {
-            $cookies = json_decode($cookies, true);
-            array_push($cookies, $orderSN);
-            Cookie::queue('dujiaoka_orders', json_encode($cookies));
+        $list = empty($cookies) ? [] : (json_decode($cookies, true) ?: []);
+        if (!in_array($orderSN, $list, true)) {
+            $list[] = $orderSN;
         }
+        $list = array_slice($list, -50);
+        Cookie::queue('dujiaoka_orders', json_encode($list));
     }
 
     /**
@@ -327,38 +422,48 @@ class OrderController extends BaseController
     public function bill(string $orderSN)
     {
         $order = Order::with(['orderItems', 'pay'])->where('order_sn', $orderSN)->first();
-        
+
         if (empty($order)) {
             return $this->err(__('dujiaoka.prompt.order_does_not_exist'));
         }
-        if ($order->status == Order::STATUS_EXPIRED) {
-            return $this->err(__('dujiaoka.prompt.order_is_expired'));
+
+        // 鉴权：复用 detailOrderSN 的归属校验逻辑
+        $user = Auth::guard('web')->user();
+        if ($user) {
+            // 登录用户：游客单或他人单一律拒绝
+            if ($order->user_id === null || $order->user_id !== $user->id) {
+                return $this->err(__('dujiaoka.prompt.order_does_not_exist'));
+            }
+        } else {
+            if (!session('order_search_pwd_' . $orderSN)) {
+                return $this->err(__('dujiaoka.prompt.server_illegal_request'));
+            }
+            if (cfg('is_open_search_pwd', \App\Models\BaseModel::STATUS_CLOSE) == \App\Models\BaseModel::STATUS_OPEN) {
+                $inputPwd = session('order_search_pwd_' . $orderSN, '');
+                if (empty($inputPwd) || $inputPwd !== $order->search_pwd) {
+                    return $this->err(__('dujiaoka.prompt.server_illegal_request'));
+                }
+            }
         }
-        
-        // 准备视图数据，保持兼容原有的变量结构
+
+        if ($order->status !== Order::STATUS_WAIT_PAY) {
+            return redirect(url('/order/detail/' . $orderSN));
+        }
+
         $data = [
-            // 订单商品项
-            'orderItems' => $order->orderItems,
-            
-            // 订单基本信息
-            'order_sn' => $order->order_sn,
-            'email' => $order->email,
-            'actual_price' => $order->actual_price,
-            'total_price' => $order->total_price,
-            'created_at' => $order->created_at->format('Y-m-d H:i:s'),
-            
-            // 支付信息
-            'pay' => $order->pay,
-            
-            // 商品类型（从第一个商品项获取）
-            'type' => $order->orderItems->first()->type ?? 1,
-            
-            // 优惠券和折扣信息（当前订单结构中暂无，设为默认值）
-            'coupon_discount_price' => $order->coupon_discount_price ?? 0,
-            'wholesale_discount_price' => 0,
-            'coupon' => null
+            'orderItems'              => $order->orderItems,
+            'order_sn'                => $order->order_sn,
+            'email'                   => $order->email,
+            'actual_price'            => $order->actual_price,
+            'total_price'             => $order->total_price,
+            'created_at'              => $order->created_at->format('Y-m-d H:i:s'),
+            'pay'                     => $order->pay,
+            'type'                    => $order->orderItems->first()->type ?? 1,
+            'coupon_discount_price'   => $order->coupon_discount_price ?? 0,
+            'wholesale_discount_price'=> 0,
+            'coupon'                  => null,
         ];
-        
+
         return $this->render('static_pages/bill', $data, __('dujiaoka.page-title.bill'));
     }
 
@@ -377,14 +482,43 @@ class OrderController extends BaseController
         if (!$order || $order->status == Order::STATUS_EXPIRED) {
             return response()->json(['msg' => 'expired', 'code' => 400001]);
         }
+
+        // 归属校验：复用详情页鉴权逻辑，防止任意订单号探测
+        $user = Auth::guard('web')->user();
+        if ($user) {
+            if ($order->user_id === null || $order->user_id !== $user->id) {
+                return response()->json(['msg' => 'forbidden', 'code' => 403]);
+            }
+        } else {
+            if (!session('order_search_pwd_' . $orderSN)) {
+                return response()->json(['msg' => 'forbidden', 'code' => 403]);
+            }
+            if (cfg('is_open_search_pwd', \App\Models\BaseModel::STATUS_CLOSE) == \App\Models\BaseModel::STATUS_OPEN) {
+                $inputPwd = session('order_search_pwd_' . $orderSN, '');
+                if (empty($inputPwd) || $inputPwd !== $order->search_pwd) {
+                    return response()->json(['msg' => 'forbidden', 'code' => 403]);
+                }
+            }
+        }
+
         // 订单已经支付
         if ($order->status == Order::STATUS_WAIT_PAY) {
             return response()->json(['msg' => 'wait....', 'code' => 400000]);
         }
+        // 处理中（人工/代充待处理）
+        if (in_array($order->status, [Order::STATUS_PENDING, Order::STATUS_PROCESSING])) {
+            return response()->json(['msg' => 'processing', 'code' => 202]);
+        }
+        // 失败或异常
+        if (in_array($order->status, [Order::STATUS_FAILURE, Order::STATUS_ABNORMAL])) {
+            return response()->json(['msg' => 'failed', 'code' => 400002, 'status' => $order->status]);
+        }
         // 成功
-        if ($order->status > Order::STATUS_WAIT_PAY) {
+        if ($order->status === Order::STATUS_COMPLETED) {
             return response()->json(['msg' => 'success', 'code' => 200]);
         }
+        // 兜底（未知状态）
+        return response()->json(['msg' => 'unknown', 'code' => 400003]);
     }
 
     /**
@@ -397,10 +531,29 @@ class OrderController extends BaseController
     public function detailOrderSN(string $orderSN)
     {
         $order = $this->orderService->detailOrderSN($orderSN);
-        // 订单不存在或者已经过期
         if (!$order) {
             return $this->err(__('dujiaoka.prompt.order_does_not_exist'));
         }
+
+        $user = Auth::guard('web')->user();
+
+        // 已登录用户：只能查看自己的订单；游客单（user_id=null）不属于任何登录用户
+        if ($user) {
+            if ($order->user_id === null || $order->user_id !== $user->id) {
+                return $this->err(__('dujiaoka.prompt.order_does_not_exist'));
+            }
+        } else {
+            if (!session('order_search_pwd_' . $orderSN)) {
+                return $this->err(__('dujiaoka.prompt.server_illegal_request'));
+            }
+            if (cfg('is_open_search_pwd', \App\Models\BaseModel::STATUS_CLOSE) == \App\Models\BaseModel::STATUS_OPEN) {
+                $inputPwd = session('order_search_pwd_' . $orderSN, '');
+                if (empty($inputPwd) || $inputPwd !== $order->search_pwd) {
+                    return $this->err(__('dujiaoka.prompt.server_illegal_request'));
+                }
+            }
+        }
+
         return $this->render('static_pages/orderinfo', ['orders' => [$order]], __('dujiaoka.page-title.order-detail'));
     }
 
@@ -413,6 +566,9 @@ class OrderController extends BaseController
      */
     public function searchOrderBySN(Request $request)
     {
+        $request->validate([
+            'order_sn' => 'required|string|max:64|alpha_num',
+        ]);
         return $this->detailOrderSN($request->input('order_sn'));
     }
 
@@ -425,17 +581,33 @@ class OrderController extends BaseController
      */
     public function searchOrderByEmail(Request $request)
     {
-        if (
-            !$request->has('email') ||
-            (
-                cfg('is_open_search_pwd', \App\Models\BaseModel::STATUS_CLOSE) == \App\Models\BaseModel::STATUS_OPEN &&
-                !$request->has('search_pwd')
-            )
-        ) {
-            return $this->err(__('dujiaoka.prompt.server_illegal_request'));
+        $request->validate([
+            'email' => 'required|email|max:255',
+            'search_pwd' => 'nullable|string|max:64',
+        ]);
+
+        $user = Auth::guard('web')->user();
+
+        if ($user) {
+            // 登录态：只允许查自己的邮箱
+            if ($request->input('email') !== $user->email) {
+                return $this->err(__('dujiaoka.prompt.no_related_order_found'));
+            }
+            $orders = $this->orderService->withEmailAndPassword($request->input('email'));
+        } else {
+            // 游客：始终要求 search_pwd（防止仅凭邮箱泄露订单隐私）
+            if (!$request->filled('search_pwd')) {
+                return $this->err(__('dujiaoka.prompt.server_illegal_request'));
+            }
+            $searchPwd = $request->input('search_pwd', '');
+            $orders = $this->orderService->withEmailAndPassword($request->input('email'), $searchPwd);
+
+            foreach ($orders as $o) {
+                session(['order_search_pwd_' . $o->order_sn => $searchPwd]);
+            }
         }
-        $orders = $this->orderService->withEmailAndPassword($request->input('email'), $request->input('search_pwd',''));
-        if (!$orders) {
+
+        if ($orders->isEmpty()) {
             return $this->err(__('dujiaoka.prompt.no_related_order_found'));
         }
         return $this->render('static_pages/orderinfo', ['orders' => $orders], __('dujiaoka.page-title.order-detail'));
@@ -454,7 +626,21 @@ class OrderController extends BaseController
             return $this->err(__('dujiaoka.prompt.no_related_order_found_for_cache'));
         }
         $orderSNS = json_decode($cookies, true);
-        $orders = $this->orderService->byOrderSNS($orderSNS);
+        if (!is_array($orderSNS) || empty($orderSNS)) {
+            return $this->err(__('dujiaoka.prompt.no_related_order_found_for_cache'));
+        }
+
+        $orderSNS = array_filter($orderSNS, fn($sn) => is_string($sn) && preg_match('/^[A-Za-z0-9]{1,64}$/', $sn));
+        if (empty($orderSNS)) {
+            return $this->err(__('dujiaoka.prompt.no_related_order_found_for_cache'));
+        }
+
+        $validSNS = array_filter($orderSNS, fn($sn) => session('order_search_pwd_' . $sn));
+        if (empty($validSNS)) {
+            return $this->err(__('dujiaoka.prompt.no_related_order_found_for_cache'));
+        }
+
+        $orders = $this->orderService->byOrderSNS($validSNS);
         return $this->render('static_pages/orderinfo', ['orders' => $orders], __('dujiaoka.page-title.order-detail'));
     }
 

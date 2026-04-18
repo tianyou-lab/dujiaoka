@@ -72,6 +72,12 @@ class OrderProcess
     private $goodsService;
 
     /**
+     * 支付服务层
+     * @var \App\Services\Payment
+     */
+    private $payService;
+
+    /**
      * 商品
      * @var Goods
      */
@@ -322,11 +328,10 @@ class OrderProcess
      */
     private function calculateThePayFee(float $price): float
     {
-        $fee = $this->payService->detail($this->payID)->pay_fee;
-        if(!$price || $fee == 0) return 0;
-        $fee = ceil($fee * $price)  / 100;
-        if ($fee < 0.01) $fee = 0.01;
-        return $fee;
+        $feeRate = $this->payService->detail($this->payID)->pay_fee;
+        if(!$price || $feeRate == 0) return 0;
+        $raw = bcdiv((string)ceil((float)bcmul((string)$feeRate, (string)$price, 4)), '100', 2);
+        return max(0.01, (float)$raw);
     }
 
     /**
@@ -350,142 +355,185 @@ class OrderProcess
     }
 
     /**
-     * 创建订单.
-     * @return Order
-     * @throws RuleValidationException
-     *
+     * 余额/零元内部履约入口，只接受 PENDING 状态（余额支付下单时已设为 PENDING）。
+     * 第三方回调走 completedOrder()。
      */
-    public function createOrder(): Order
+    public function completedOrderByBalance(string $orderSN): Order
     {
+        DB::beginTransaction();
         try {
-            $order = new Order();
-            // 生成订单号
-            $order->order_sn = strtoupper(Str::random(16));
-            // 设置商品及多规格ID
-            $order->goods_id = $this->goods->id;
-            $order->sub_id = $this->sub_id;
-            // 标题
-            $order->title = $this->goods->gd_name . ' x ' . $this->buyAmount;
-            // 订单类型
-            $order->type = $this->goods->type;
-            // 查询密码
-            $order->search_pwd = $this->searchPwd;
-            // 邮箱
-            $order->email = $this->email;
-            // 支付方式.
-            $order->pay_id = $this->payID;
-            // 商品单价
-            $order->goods_price = $this->goods->price;
-            // 购买数量
-            $order->buy_amount = $this->buyAmount;
-            // 预选卡密
-            $order->carmi_id = $this->carmiID;
-            // 订单详情
-            $order->info = $this->otherIpt;
-            // ip地址
-            $order->buy_ip = $this->buyIP;
-            // 优惠码优惠价格
-            $order->coupon_discount_price = $this->calculateTheCouponPrice();
-            if ($this->coupon) {
-                $order->coupon_id = $this->coupon->id;
-            }
-            // 批发价
-            $order->wholesale_discount_price = $this->calculateTheWholesalePrice();
-            // 订单总价
-            $order->total_price = $this->calculateTheTotalPrice();
-            // 订单实际需要支付价格
-            $order->actual_price = $this->calculateTheActualPrice(
-                $this->calculateTheTotalPrice(),
-                $this->calculateTheCouponPrice(),
-                $this->calculateTheWholesalePrice()
-            );
-            // 保存订单
-            $order->save();
-            // 如果有用到优惠券
-            if ($this->coupon) 
-                $this->couponService->retDecr($this->coupon->coupon);// 使用次数-1
-            
-            // 将订单加入队列 x分钟后过期
-            $expiredOrderDate = cfg('order_expire_time', 5);
-            OrderExpired::dispatch($order->order_sn)->delay(Carbon::now()->addMinutes($expiredOrderDate));
-            return $order;
-        } catch (\Exception $exception) {
-            throw new RuleValidationException($exception->getMessage());
-        }
+            $order = Order::with(['orderItems.goods', 'pay', 'user'])
+                ->where('order_sn', $orderSN)
+                ->lockForUpdate()
+                ->first();
 
+            if (!$order) {
+                throw new \Exception(__('dujiaoka.prompt.order_status_completed'));
+            }
+
+            // 幂等：只允许 PENDING 进入（余额支付专属状态）
+            if ($order->status !== Order::STATUS_PENDING) {
+                DB::commit();
+                return $order;
+            }
+
+            $pushed = Order::where('order_sn', $orderSN)
+                ->where('status', Order::STATUS_PENDING)
+                ->update(['status' => Order::STATUS_PROCESSING]);
+
+            if (!$pushed) {
+                DB::commit();
+                $order->refresh();
+                return $order;
+            }
+
+            $order->refresh();
+            $this->fulfillOrder($order);
+
+            DB::commit();
+            return $order;
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
     }
 
-
     /**
-     * 订单成功方法
-     *
-     * @param string $orderSN 订单号
-     * @param float $actualPrice 实际支付金额
-     * @param string $tradeNo 第三方订单号
-     * @return Order
-     *
+     * 外部第三方回调专用入口，只接受 WAIT_PAY 状态。
+     * 余额支付走 completedOrderByBalance()，不走此方法。
      */
     public function completedOrder(string $orderSN, float $actualPrice, string $tradeNo = '')
     {
         DB::beginTransaction();
         try {
-            // 得到订单详情
-            $order = $this->orderService->detailOrderSN($orderSN);
+            $order = Order::with(['orderItems.goods', 'pay', 'user'])
+                ->where('order_sn', $orderSN)
+                ->lockForUpdate()
+                ->first();
+
             if (!$order) {
-                throw new \Exception(__('dujiaoka.prompt.order_does_not_exist'));
-            }
-            // 订单已经处理
-            if ($order->status == Order::STATUS_COMPLETED) {
                 throw new \Exception(__('dujiaoka.prompt.order_status_completed'));
             }
-            $bccomp = bccomp($order->actual_price, $actualPrice, 2);
-            // 金额不一致
-            if ($bccomp != 0) {
-                throw new \Exception(__('dujiaoka.prompt.order_inconsistent_amounts'));
+
+            // 晚到回调：订单已过期但第三方已扣款，标记异常供人工复核
+            if ($order->status === Order::STATUS_EXPIRED && $actualPrice > 0) {
+                $order->status    = Order::STATUS_ABNORMAL;
+                $order->trade_no  = $tradeNo ?: '';
+                $order->paid_price = $actualPrice;
+                $order->save();
+
+                // 混合支付：过期时已退回余额，晚到回调需幂等冲回，防止账务失衡
+                if ($order->payment_method === Order::PAYMENT_MIXED
+                    && $order->balance_used > 0
+                    && $order->user_id
+                ) {
+                    $chargebackKey = 'chargeback_' . $order->order_sn;
+                    $alreadyRefunded = \App\Models\UserBalanceRecord::where('user_id', $order->user_id)
+                        ->where('type', 'refund')
+                        ->where('related_order_sn', $order->order_sn)
+                        ->exists();
+                    $alreadyCharged = \App\Models\UserBalanceRecord::where('user_id', $order->user_id)
+                        ->where('type', 'consume')
+                        ->where('related_order_sn', $chargebackKey)
+                        ->exists();
+                    if ($alreadyRefunded && !$alreadyCharged) {
+                        $user = User::find($order->user_id);
+                        if ($user) {
+                            $user->deductBalance(
+                                $order->balance_used,
+                                'consume',
+                                '混合支付晚到回调冲回已退余额',
+                                $chargebackKey
+                            );
+                        }
+                    }
+                }
+
+                \Illuminate\Support\Facades\Log::warning('订单已过期但收到第三方付款回调，已标记为异常待人工复核', [
+                    'order_sn'   => $orderSN,
+                    'paid_price' => $actualPrice,
+                    'trade_no'   => $tradeNo,
+                ]);
+                DB::commit();
+                return $order;
             }
-            $order->actual_price = $actualPrice;
-            $order->trade_no = $tradeNo ?: '';
-            
-            // 简单的库存处理
-            $stockMode = cfg('stock_mode', 2);
-            if ($stockMode == 1) {
-                // 下单即减库存模式：释放锁定
-                CacheManager::unlockStock($order->order_sn);
+
+            // 幂等：外部回调只允许从 WAIT_PAY 推进；PENDING 是余额支付内部状态，不在此处理
+            if ($order->status !== Order::STATUS_WAIT_PAY) {
+                DB::commit();
+                return $order;
             }
-            
-            // 根据订单中的商品类型处理
-            $hasAutoDelivery = $order->orderItems()->whereHas('goods', function($query) {
-                $query->where('type', Goods::AUTOMATIC_DELIVERY);
-            })->exists();
-            
-            if ($hasAutoDelivery) {
-                $this->processAuto($order);
-            } else {
-                $this->processManual($order);
+
+            // 回调金额与订单应付金额一致性校验（允许 ±0.01 误差）
+            if ($actualPrice > 0 && abs($actualPrice - (float)$order->actual_price) > 0.01) {
+                \Illuminate\Support\Facades\Log::warning('支付金额不一致', [
+                    'order_sn'     => $orderSN,
+                    'expected'     => $order->actual_price,
+                    'callback_got' => $actualPrice,
+                ]);
+                throw new \Exception('支付金额与订单金额不符，拒绝履约');
             }
-            
-            // 处理用户相关逻辑
-            $this->processUserLogic($order);
+
+            // CAS 原子推进状态，防止并发重复回调
+            $pushed = Order::where('order_sn', $orderSN)
+                ->where('status', Order::STATUS_WAIT_PAY)
+                ->update([
+                    'status'     => Order::STATUS_PROCESSING,
+                    'trade_no'   => $tradeNo ?: '',
+                    'paid_price' => $actualPrice > 0 ? $actualPrice : $order->actual_price,
+                ]);
+
+            if (!$pushed) {
+                // 状态已被其他进程推进（含 OrderExpired），检查是否为晚到回调
+                $order->refresh();
+                if ($order->status === Order::STATUS_EXPIRED && $actualPrice > 0) {
+                    $order->status    = Order::STATUS_ABNORMAL;
+                    $order->trade_no  = $tradeNo ?: '';
+                    $order->paid_price = $actualPrice;
+                    $order->save();
+
+                    // 混合支付：幂等冲回已退余额
+                    if ($order->payment_method === Order::PAYMENT_MIXED
+                        && $order->balance_used > 0
+                        && $order->user_id
+                    ) {
+                        $chargebackKey = 'chargeback_' . $order->order_sn;
+                        $alreadyRefunded = \App\Models\UserBalanceRecord::where('user_id', $order->user_id)
+                            ->where('type', 'refund')
+                            ->where('related_order_sn', $order->order_sn)
+                            ->exists();
+                        $alreadyCharged = \App\Models\UserBalanceRecord::where('user_id', $order->user_id)
+                            ->where('type', 'consume')
+                            ->where('related_order_sn', $chargebackKey)
+                            ->exists();
+                        if ($alreadyRefunded && !$alreadyCharged) {
+                            $user = User::find($order->user_id);
+                            if ($user) {
+                                $user->deductBalance(
+                                    $order->balance_used,
+                                    'consume',
+                                    '混合支付晚到回调冲回已退余额',
+                                    $chargebackKey
+                                );
+                            }
+                        }
+                    }
+
+                    \Illuminate\Support\Facades\Log::warning('订单已过期但收到第三方付款回调（CAS），已标记为异常待人工复核', [
+                        'order_sn'   => $orderSN,
+                        'paid_price' => $actualPrice,
+                        'trade_no'   => $tradeNo,
+                    ]);
+                }
+                DB::commit();
+                return $order;
+            }
+
+            $order->refresh();
+
+            $this->fulfillOrder($order);
+
             DB::commit();
-            
-            // 如果开启了server酱
-            if (cfg('is_open_server_jiang', 0) == BaseModel::STATUS_OPEN) {
-                ServerJiang::dispatch($order);
-            }
-            // 如果开启了TG推送
-            if (cfg('is_open_telegram_push', 0) == BaseModel::STATUS_OPEN) {
-                TelegramPush::dispatch($order);
-            }
-            // 如果开启了Bark推送
-            if (cfg('is_open_bark_push', 0) == BaseModel::STATUS_OPEN) {
-                BarkPush::dispatch($order);
-            }
-            // 如果开启了企业微信Bot推送
-            if (cfg('is_open_qywxbot_push', 0) == BaseModel::STATUS_OPEN) {
-                WorkWeiXinPush::dispatch($order);
-            }
-            // 回调事件
-            ApiHook::dispatch($order);
             return $order;
         } catch (\Exception $exception) {
             DB::rollBack();
@@ -494,7 +542,208 @@ class OrderProcess
     }
 
     /**
-     * 手动处理的订单.
+     * 核心履约逻辑（库存扣减、发货、状态流转、通知），必须在事务内调用。
+     * 所有 dispatch 使用 afterCommit，确保事务回滚时不会外发。
+     */
+    private function fulfillOrder(Order $order): void
+    {
+        // 库存处理
+        $stockMode = cfg('stock_mode', 2);
+        if ($stockMode == 1) {
+            // 预占模式：解锁缓存锁，并实扣数据库库存
+            CacheManager::unlockStock($order->order_sn);
+            foreach ($order->orderItems as $orderItem) {
+                // 自动发货商品库存即卡密数量，由 processAutoItem 取卡密时自然扣减，不操作 goods_sub.stock 原始列
+                if ($orderItem->goods && $orderItem->goods->type === Goods::AUTOMATIC_DELIVERY) {
+                    GoodsSub::where('id', $orderItem->sub_id)
+                        ->increment('sales_volume', $orderItem->quantity);
+                    continue;
+                }
+                $affected = GoodsSub::where('id', $orderItem->sub_id)
+                    ->where('stock', '>=', $orderItem->quantity)
+                    ->decrement('stock', $orderItem->quantity);
+                if (!$affected) {
+                    $order->status = Order::STATUS_ABNORMAL;
+                    $order->save();
+                    \Illuminate\Support\Facades\Log::error('预占模式库存扣减失败，订单标记为异常', [
+                        'order_sn' => $order->order_sn,
+                        'sub_id'   => $orderItem->sub_id,
+                    ]);
+                    return;
+                }
+                GoodsSub::where('id', $orderItem->sub_id)
+                    ->increment('sales_volume', $orderItem->quantity);
+            }
+        }
+
+        // 按 orderItem 粒度分发自动/人工，避免混合购物车整单误处理
+        $allSucceeded = true;
+        foreach ($order->orderItems as $orderItem) {
+            if (!$orderItem->goods) {
+                continue;
+            }
+            if ($orderItem->goods->type === Goods::AUTOMATIC_DELIVERY) {
+                $result = $this->processAutoItem($order, $orderItem);
+                if (!$result) {
+                    $allSucceeded = false;
+                }
+            } else {
+                $this->processManualItem($order, $orderItem);
+            }
+        }
+
+        // 仅在全部自动发货成功时才标记完成；有手工商品则保持 PENDING
+        $hasManual = $order->orderItems->contains(fn($i) => $i->goods && $i->goods->type !== Goods::AUTOMATIC_DELIVERY);
+        if (!$hasManual && $allSucceeded) {
+            $order->status = Order::STATUS_COMPLETED;
+            $order->save();
+        } elseif (!$hasManual && !$allSucceeded) {
+            // 纯自动但有失败项，已在 processAutoItem 内标异常
+            if ($order->balance_used > 0 && $order->user_id) {
+                $user = User::find($order->user_id);
+                if ($user) {
+                    $user->addBalance($order->balance_used, 'refund', '自动发货缺货退款', $order->order_sn);
+                }
+            }
+            if ($order->paid_price > 0) {
+                \Illuminate\Support\Facades\Log::warning('自动发货缺货，第三方实付需人工退款', [
+                    'order_sn'   => $order->order_sn,
+                    'paid_price' => $order->paid_price,
+                    'trade_no'   => $order->trade_no,
+                ]);
+            }
+        } else {
+            if (!$allSucceeded && $order->balance_used > 0 && $order->user_id) {
+                $user = User::find($order->user_id);
+                if ($user) {
+                    $user->addBalance($order->balance_used, 'refund', '混合订单发货异常退款', $order->order_sn);
+                }
+            }
+            if (!$allSucceeded && $order->paid_price > 0) {
+                \Illuminate\Support\Facades\Log::warning('混合订单自动发货缺货，第三方实付需人工退款', [
+                    'order_sn'   => $order->order_sn,
+                    'paid_price' => $order->paid_price,
+                    'trade_no'   => $order->trade_no,
+                ]);
+            }
+            if ($order->status !== Order::STATUS_ABNORMAL) {
+                $order->status = $allSucceeded ? Order::STATUS_PENDING : Order::STATUS_ABNORMAL;
+                $order->save();
+            }
+        }
+
+        // 仅在订单最终成功（COMPLETED 或 PENDING）时累计用户消费
+        if (in_array($order->status, [Order::STATUS_COMPLETED, Order::STATUS_PENDING])) {
+            $this->processUserLogic($order);
+        }
+
+        // 所有外发通知在事务提交后执行，防止回滚后脏外发
+        $orderSnapshot = $order;
+        DB::afterCommit(function () use ($orderSnapshot) {
+            if (cfg('is_open_server_jiang', 0) == BaseModel::STATUS_OPEN) {
+                ServerJiang::dispatch($orderSnapshot);
+            }
+            if (cfg('is_open_telegram_push', 0) == BaseModel::STATUS_OPEN) {
+                TelegramPush::dispatch($orderSnapshot);
+            }
+            if (cfg('is_open_bark_push', 0) == BaseModel::STATUS_OPEN) {
+                BarkPush::dispatch($orderSnapshot);
+            }
+            if (cfg('is_open_qywxbot_push', 0) == BaseModel::STATUS_OPEN) {
+                WorkWeiXinPush::dispatch($orderSnapshot);
+            }
+            ApiHook::dispatch($orderSnapshot);
+        });
+    }
+
+    /**
+     * 处理单个自动发货 item，返回是否成功
+     */
+    private function processAutoItem(Order $order, $orderItem): bool
+    {
+        $carmis = $this->carmisService->takes($orderItem->goods_id, $orderItem->quantity, $orderItem->sub_id ?? 0);
+        if (!$carmis || count($carmis) != $orderItem->quantity) {
+            $orderItem->info = __('dujiaoka.prompt.order_carmis_insufficient_quantity_available');
+            $orderItem->save();
+            $order->status = Order::STATUS_ABNORMAL;
+            $order->save();
+            return false;
+        }
+
+        $carmisTexts = array_column($carmis, 'carmi');
+        $ids = array_column($carmis, 'id');
+        $orderItem->info = implode(PHP_EOL, $carmisTexts);
+        $orderItem->save();
+        $this->carmisService->soldByIDS($ids);
+
+        // 发货邮件
+        $mailData = [
+            'product_name' => $orderItem->goods_name ?? '未知商品',
+            'webname'      => cfg('text_logo', '独角数卡'),
+            'weburl'       => config('app.url') ?? 'http://dujiaoka.com',
+            'ord_info'     => implode('<br/>', $carmisTexts),
+            'ord_title'    => $orderItem->goods_name ?? '未知商品',
+            'order_id'     => $order->order_sn,
+            'buy_amount'   => $orderItem->quantity,
+            'ord_price'    => $order->actual_price,
+        ];
+        $tpl = $this->emailtplService->detailByToken('card_send_user_email');
+        $mailBody = replaceMailTemplate($tpl, $mailData);
+        if (filter_var($order->email, FILTER_VALIDATE_EMAIL)) {
+            $email = $order->email;
+            $tplName = $mailBody['tpl_name'];
+            $tplContent = $mailBody['tpl_content'];
+            DB::afterCommit(fn() => MailSend::dispatch($email, $tplName, $tplContent));
+        }
+        return true;
+    }
+
+    /**
+     * 处理单个人工发货 item
+     */
+    private function processManualItem(Order $order, $orderItem): void
+    {
+        // 发货时减库存模式
+        $stockMode = cfg('stock_mode', 2);
+        if ($stockMode == 2) {
+            $affected = GoodsSub::where('id', $orderItem->sub_id)
+                ->where('stock', '>=', $orderItem->quantity)
+                ->decrement('stock', $orderItem->quantity);
+            if (!$affected) {
+                // 不抛异常：第三方已扣款，只标记异常让人工处理，保证事务正常提交
+                $order->status = Order::STATUS_ABNORMAL;
+                $order->save();
+                \Illuminate\Support\Facades\Log::error('人工商品库存扣减失败，订单标记为异常', [
+                    'order_sn' => $order->order_sn,
+                    'sub_id'   => $orderItem->sub_id,
+                ]);
+                return;
+            }
+            GoodsSub::where('id', $orderItem->sub_id)->increment('sales_volume', $orderItem->quantity);
+        }
+
+        // 通知管理员
+        $mailData = [
+            'product_name' => $orderItem->goods_name ?? '未知商品',
+            'webname'      => cfg('text_logo', '独角数卡'),
+            'weburl'       => config('app.url') ?? 'http://dujiaoka.com',
+            'ord_info'     => str_replace(PHP_EOL, '<br/>', $orderItem->info ?? ''),
+            'ord_title'    => $orderItem->goods_name ?? '未知商品',
+            'order_id'     => $order->order_sn,
+            'buy_amount'   => $orderItem->quantity,
+            'ord_price'    => $order->actual_price,
+            'created_at'   => $order->created_at,
+        ];
+        $tpl = $this->emailtplService->detailByToken('manual_send_manage_mail');
+        $mailBody = replaceMailTemplate($tpl, $mailData);
+        $manageMail = cfg('manage_email', '');
+        $tplName = $mailBody['tpl_name'];
+        $tplContent = $mailBody['tpl_content'];
+        DB::afterCommit(fn() => MailSend::dispatch($manageMail, $tplName, $tplContent));
+    }
+
+    /**
+     * 手动处理的订单（保留兼容，内部调用 processManualItem）.
      *
      * @param Order $order 订单
      * @return Order 订单
@@ -510,76 +759,82 @@ class OrderProcess
         $stockMode = cfg('stock_mode', 2);
         if ($stockMode == 2) {
             foreach ($order->orderItems as $orderItem) {
-                $goodsSub = GoodsSub::find($orderItem->sub_id);
-                if ($goodsSub && $goodsSub->stock >= $orderItem->quantity) {
-                    $goodsSub->stock -= $orderItem->quantity;
-                    $goodsSub->sales_volume += $orderItem->quantity;
-                    $goodsSub->save();
+                $affected = GoodsSub::where('id', $orderItem->sub_id)
+                    ->where('stock', '>=', $orderItem->quantity)
+                    ->decrement('stock', $orderItem->quantity);
+                if (!$affected) {
+                    $order->status = Order::STATUS_ABNORMAL;
+                    $order->save();
+                    throw new \Exception("库存扣减失败，订单标记为异常: {$order->order_sn}");
                 }
+                GoodsSub::where('id', $orderItem->sub_id)->increment('sales_volume', $orderItem->quantity);
             }
         }
         // 邮件数据
         $mailData = [
-            'created_at' => $order->create_at,
             'product_name' => $order->orderItems->first()->goods_name ?? '未知商品',
             'webname' => cfg('text_logo', '独角数卡'),
             'weburl' => config('app.url') ?? 'http://dujiaoka.com',
-            'ord_info' => str_replace(PHP_EOL, '<br/>', $order->info),
-            'ord_title' => $order->title,
+            'ord_info' => str_replace(PHP_EOL, '<br/>', $order->orderItems->first()->info ?? ''),
+            'ord_title' => $order->orderItems->first()->goods_name ?? '未知商品',
             'order_id' => $order->order_sn,
-            'buy_amount' => $order->buy_amount,
+            'buy_amount' => $order->orderItems->sum('quantity'),
             'ord_price' => $order->actual_price,
             'created_at' => $order->created_at,
         ];
         $tpl = $this->emailtplService->detailByToken('manual_send_manage_mail');
         $mailBody = replaceMailTemplate($tpl, $mailData);
         $manageMail = cfg('manage_email', '');
+        $tplName = $mailBody['tpl_name'];
+        $tplContent = $mailBody['tpl_content'];
         // 邮件发送
-        MailSend::dispatch($manageMail, $mailBody['tpl_name'], $mailBody['tpl_content']);
+        DB::afterCommit(fn() => MailSend::dispatch($manageMail, $tplName, $tplContent));
         return $order;
     }
 
     /**
-     * 处理自动发货.
-     *
-     * @param Order $order 订单
-     * @return Order 订单
-     *
+     * @deprecated 已被 fulfillOrder + processAutoItem 取代，保留仅供向后兼容，不再被调用。
      */
     public function processAuto(Order $order): Order
     {
-        if($order->carmi_id){
-            $carmis = $this->carmisService->getCarmiById($order->carmi_id);
-            $carmisInfo = [$carmis['carmi']];
-            $ids = [$carmis['id']];
-        }else{
-            // 批量获得卡密
-            $carmis = $this->carmisService->takes($order->goods_id, $order->buy_amount, $order->sub_id);
-            // 实际可使用的库存已经少于购买数量了
-            if (count($carmis) != $order->buy_amount) {
-                $order->info = __('dujiaoka.prompt.order_carmis_insufficient_quantity_available');
+        $firstItem = $order->orderItems->first();
+        if (!$firstItem) {
+            $order->status = Order::STATUS_ABNORMAL;
+            $order->save();
+            return $order;
+        }
+
+        $carmisInfo = [];
+        $ids = [];
+
+        foreach ($order->orderItems as $item) {
+            $carmis = $this->carmisService->takes($item->goods_id, $item->quantity, $item->sub_id ?? 0);
+            if (!$carmis || count($carmis) != $item->quantity) {
+                $item->info = __('dujiaoka.prompt.order_carmis_insufficient_quantity_available');
+                $item->save();
                 $order->status = Order::STATUS_ABNORMAL;
                 $order->save();
                 return $order;
             }
-            $carmisInfo = array_column($carmis, 'carmi');
-            $ids = array_column($carmis, 'id');
+            $carmisInfo = array_merge($carmisInfo, array_column($carmis, 'carmi'));
+            $ids = array_merge($ids, array_column($carmis, 'id'));
+            $item->info = implode(PHP_EOL, array_column($carmis, 'carmi'));
+            $item->save();
         }
-        $order->info = implode(PHP_EOL, $carmisInfo);
+
         $order->status = Order::STATUS_COMPLETED;
         $order->save();
         // 将卡密设置为已售出
         $this->carmisService->soldByIDS($ids);
         // 邮件数据
         $mailData = [
-            'created_at' => $order->create_at,
-            'product_name' => $order->orderItems->first()->goods_name ?? '未知商品',
+            'product_name' => $firstItem->goods_name ?? '未知商品',
             'webname' => cfg('text_logo', '独角数卡'),
             'weburl' => config('app.url') ?? 'http://dujiaoka.com',
             'ord_info' => implode('<br/>', $carmisInfo),
-            'ord_title' => $order->title,
+            'ord_title' => $firstItem->goods_name ?? '未知商品',
             'order_id' => $order->order_sn,
-            'buy_amount' => $order->buy_amount,
+            'buy_amount' => $order->orderItems->sum('quantity'),
             'ord_price' => $order->actual_price,
         ];
         $tpl = $this->emailtplService->detailByToken('card_send_user_email');
@@ -606,8 +861,7 @@ class OrderProcess
             return;
         }
 
-        // 检查是否为充值订单
-        $isRechargeOrder = $order->orderItems()->where('goods_id', 0)->exists();
+        $isRechargeOrder = $order->isRechargeOrder();
         
         if ($isRechargeOrder) {
             // 余额充值订单：增加用户余额

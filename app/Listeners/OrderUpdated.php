@@ -3,6 +3,7 @@
 namespace App\Listeners;
 
 use App\Jobs\MailSend;
+use App\Models\BaseModel;
 use App\Models\Emailtpl;
 use App\Models\Order;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -29,39 +30,44 @@ class OrderUpdated
      */
     public function handle(OrderUpdatedEvent $event)
     {
+        // 只在 status 字段实际发生变更时才处理邮件通知，避免修改其他字段时重复发邮件
+        if (!$event->order->wasChanged('status')) {
+            return;
+        }
+
         $sysCache = cache('system-setting');
-        // 当代充商品状态，将会对顾客进行订单内容推送
+        $firstItem = $event->order->orderItems->first();
+        if (!$firstItem) {
+            return;
+        }
         $order = [
             'created_at' => date('Y-m-d H:i'),
-            'ord_title' => $event->order->title,
+            'ord_title' => $firstItem->goods_name ?? '未知商品',
             'webname' => $sysCache['text_logo'] ?? '独角数卡',
             'weburl' => config('app.url'),
             'order_id' => $event->order->order_sn,
             'ord_price' => $event->order->actual_price,
-            'ord_info' => str_replace(PHP_EOL, '<br/>', $event->order->info)
+            'ord_info' => str_replace(PHP_EOL, '<br/>', $firstItem->info ?? ''),
         ];
         $to = $event->order->email;
+        $isManual = $event->order->orderItems->contains(function ($item) {
+            return $item->type == BaseModel::MANUAL_PROCESSING;
+        });
         // 邮件
-        if ($event->order->type == Order::MANUAL_PROCESSING) {
-            switch ($event->order->status) {
-                case Order::STATUS_PENDING:
-                    $mailtpl = cache()->remember('email_template_pending_order', 86400, function () {
-                        return Emailtpl::query()->where('tpl_token', 'pending_order')->first();
-                    })->toArray();
-                    self::sendMailToOrderStatus($mailtpl, $order, $to);
-                    break;
-                case Order::STATUS_COMPLETED:
-                    $mailtpl = cache()->remember('email_template_completed_order', 86400, function () {
-                        return Emailtpl::query()->where('tpl_token', 'completed_order')->first();
-                    })->toArray();
-                    self::sendMailToOrderStatus($mailtpl, $order, $to);
-                    break;
-                case Order::STATUS_FAILURE:
-                    $mailtpl = cache()->remember('email_template_failed_order', 86400, function () {
-                        return Emailtpl::query()->where('tpl_token', 'failed_order')->first();
-                    })->toArray();
-                    self::sendMailToOrderStatus($mailtpl, $order, $to);
-                    break;
+        if ($isManual) {
+            $tplMap = [
+                Order::STATUS_PENDING   => ['key' => 'email_template_pending_order',   'token' => 'pending_order'],
+                Order::STATUS_COMPLETED => ['key' => 'email_template_completed_order', 'token' => 'completed_order'],
+                Order::STATUS_FAILURE   => ['key' => 'email_template_failed_order',    'token' => 'failed_order'],
+            ];
+            $tplDef = $tplMap[$event->order->status] ?? null;
+            if ($tplDef) {
+                $tplModel = cache()->remember($tplDef['key'], 86400, function () use ($tplDef) {
+                    return Emailtpl::query()->where('tpl_token', $tplDef['token'])->first();
+                });
+                if ($tplModel) {
+                    self::sendMailToOrderStatus($tplModel->toArray(), $order, $to);
+                }
             }
         }
     }

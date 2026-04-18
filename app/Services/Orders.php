@@ -8,6 +8,7 @@ namespace App\Services;
 
 
 use App\Exceptions\RuleValidationException;
+use App\Services\CacheManager;
 use App\Models\BaseModel;
 use App\Models\Coupon;
 use App\Models\Goods;
@@ -75,9 +76,9 @@ class Orders
         if (
             cfg('is_open_geetest') == BaseModel::STATUS_OPEN
             &&
-            !Validator::make($request->all(),
+            Validator::make($request->all(),
                 ['geetest_challenge' => 'geetest',],
-                [ 'geetest' => __('dujiaoka.prompt.geetest_validate_fail')])
+                [ 'geetest' => __('dujiaoka.prompt.geetest_validate_fail')])->fails()
 
         ) {
             throw new RuleValidationException(__('dujiaoka.prompt.geetest_validate_fail'));
@@ -87,7 +88,6 @@ class Orders
         if($limit > 0){
             $count = Order::where('buy_ip', $request->getClientIp())
             ->where('status', Order::STATUS_WAIT_PAY)
-            ->limit($limit)
             ->count();
             
             if ($count >= $limit)
@@ -224,7 +224,12 @@ class Orders
      */
     public function expiredOrderSN(string $orderSN): bool
     {
-        return Order::query()->where('order_sn', $orderSN)->update(['status' => Order::STATUS_EXPIRED]);
+        $result = Order::query()
+            ->where('order_sn', $orderSN)
+            ->where('status', Order::STATUS_WAIT_PAY)
+            ->update(['status' => Order::STATUS_EXPIRED]);
+        CacheManager::forgetOrder($orderSN);
+        return $result;
     }
 
 
@@ -236,12 +241,12 @@ class Orders
      * @return array|\Illuminate\Database\Concerns\BuildsQueries[]|\Illuminate\Database\Eloquent\Builder[]|\Illuminate\Database\Eloquent\Collection|\Illuminate\Database\Query\Builder[]|\Illuminate\Support\Collection
      *
      */
-    public function withEmailAndPassword(string $email, string $searchPwd = '')
+    public function withEmailAndPassword(string $email, string $searchPwd = null)
     {
         return Order::query()
             ->with(['orderItems.goods', 'pay', 'user'])
             ->where('email', $email)
-            ->when(!empty($searchPwd), function ($query) use ($searchPwd) {
+            ->when($searchPwd !== null, function ($query) use ($searchPwd) {
                 $query->where('search_pwd', $searchPwd);
             })
             ->orderBy('created_at', 'DESC')

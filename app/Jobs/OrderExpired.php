@@ -3,6 +3,8 @@
 namespace App\Jobs;
 
 use App\Models\Order;
+use App\Models\User;
+use App\Jobs\CouponBack;
 use App\Services\CacheManager;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -53,18 +55,46 @@ class OrderExpired implements ShouldQueue
      */
     public function handle()
     {
-        // 如果x分钟后还没支付就算过期
-        $order = app('App\Services\Orders')->detailOrderSN($this->orderSN);
-        if ($order && $order->status == Order::STATUS_WAIT_PAY) {
-            $stockMode = cfg('stock_mode', 2);
-            // 如果是下单即减库存模式，释放锁定的库存
-            if ($stockMode == 1) {
-                CacheManager::unlockStock($this->orderSN);
-            }
-            
-            app('App\Services\Orders')->expiredOrderSN($this->orderSN);
-            // 回退优惠券
-            CouponBack::dispatch($order);
+        // 原子条件更新：只有 WAIT_PAY 才能迁移到 EXPIRED，防止并发重复执行
+        $affected = Order::where('order_sn', $this->orderSN)
+            ->where('status', Order::STATUS_WAIT_PAY)
+            ->update(['status' => Order::STATUS_EXPIRED]);
+
+        if (!$affected) {
+            // 订单已被支付或已过期，幂等退出
+            return;
         }
+
+        // 批量 update 不触发 Eloquent 事件，手动清缓存
+        CacheManager::forgetOrder($this->orderSN);
+
+        // 状态已原子迁移，安全执行后续副作用
+        $order = Order::where('order_sn', $this->orderSN)->first();
+        if (!$order) {
+            return;
+        }
+
+        $stockMode = cfg('stock_mode', 2);
+        if ($stockMode == 1) {
+            CacheManager::unlockStock($this->orderSN);
+        }
+
+        // 退还预扣余额（幂等：related_order_sn 唯一约束由 addBalance 流水记录保证可追溯）
+        if (in_array($order->payment_method, [Order::PAYMENT_BALANCE, Order::PAYMENT_MIXED])
+            && $order->balance_used > 0
+            && $order->user_id
+        ) {
+            $user = User::find($order->user_id);
+            if ($user) {
+                $user->addBalance(
+                    $order->balance_used,
+                    'refund',
+                    '订单过期退款',
+                    $order->order_sn
+                );
+            }
+        }
+
+        CouponBack::dispatch($order);
     }
 }
