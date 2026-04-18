@@ -1,8 +1,11 @@
 ## 写在前面
 
 - 此教程专为有洁癖的宝宝们准备。不使用任何一键安装脚本。面板党可以退散了！！
-- 本人测试环境是 Debian 11 其他的没测试。
-## 手动安装lnmp
+- 推荐环境：Debian 12+ / Ubuntu 22.04+
+- **本版本要求 PHP 8.2+**
+
+## 手动安装 LNMP
+
 - 更新源
 
 ```bash  
@@ -10,15 +13,15 @@ apt update
 apt upgrade
 ``` 
 
-- 安装Nginx
+- 安装 Nginx
 ```bash
 apt install nginx
 ```
-- 安装Mariadb
+- 安装 MySQL 8.0+ 或 MariaDB 10.6+
 ```bash
 apt install mariadb-server
 ```
-- 配置Mariadb
+- 配置 MariaDB
 ```bash
 mysql_secure_installation
 ```
@@ -31,36 +34,49 @@ mariadb
 ```bash
 Welcome to the MariaDB monitor.  Commands end with ; or \g.
 Your MariaDB connection id is 74
-Server version: 10.3.15-MariaDB-1 Debian 10
+Server version: 10.6.x-MariaDB
 Copyright (c) 2000, 2018, Oracle, MariaDB Corporation Ab and others.
 Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
 MariaDB [(none)]> 
 ```
 接下来输入命令 
 ```sql
-CREATE DATABASE [这里替换为数据库名] ;
+CREATE DATABASE [这里替换为数据库名] CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 GRANT ALL ON [这里替换为数据库名].* TO '[这里替换为用户名]'@'localhost' IDENTIFIED BY '[这里替换为密码]' WITH GRANT OPTION;
 FLUSH PRIVILEGES;
 EXIT
 ```
-- 安装PHP7.4
+- 安装 PHP 8.2+
+
+Debian 12 默认仓库包含 PHP 8.2，直接安装：
 ```bash
-apt install php php-fpm php-mysql php-gd php-zip php-opcache php-curl php-mbstring php-intl php-dom php-bcmath php-redis php-fileinfo
+apt install php8.2 php8.2-fpm php8.2-mysql php8.2-gd php8.2-zip php8.2-opcache php8.2-curl php8.2-mbstring php8.2-intl php8.2-dom php8.2-bcmath php8.2-redis php8.2-fileinfo php8.2-xml
 ```
-- 安装redis
+
+如果使用 Ubuntu 或 Debian 11，需先添加 Sury 仓库：
 ```bash
-apt install redis
+apt install -y lsb-release apt-transport-https ca-certificates wget
+wget -qO- https://packages.sury.org/php/apt.gpg | gpg --dearmor -o /usr/share/keyrings/sury-php.gpg
+echo "deb [signed-by=/usr/share/keyrings/sury-php.gpg] https://packages.sury.org/php/ $(lsb_release -sc) main" | tee /etc/apt/sources.list.d/sury-php.list
+apt update
+apt install php8.2 php8.2-fpm php8.2-mysql php8.2-gd php8.2-zip php8.2-opcache php8.2-curl php8.2-mbstring php8.2-intl php8.2-dom php8.2-bcmath php8.2-redis php8.2-fileinfo php8.2-xml
+```
+
+- 安装 Redis
+```bash
+apt install redis-server
 ```
 - 启用函数
-`nano /etc/php/7.4/fpm/php.ini`,`ctrl+w` 搜索 `putenv`，`proc_open`，`pcntl_signal`，`pcntl_alarm` 在`disable_functions` 一行 有就去掉。
-之后 `/etc/init.d/php7.4-fpm reload` 
+`nano /etc/php/8.2/fpm/php.ini`，`ctrl+w` 搜索 `putenv`，`proc_open`，`pcntl_signal`，`pcntl_alarm` 在 `disable_functions` 一行有就去掉。
+之后 `systemctl restart php8.2-fpm`
 
 ## 下载源代码
 ```bash
-cd /var/www/dujiaoka
 apt install git
-git clone https://github.com/assimon/dujiaoka.git 
-chmod 777 -R /var/www/dujiaoka
+git clone https://github.com/hiouttime/dujiaoka.git /var/www/dujiaoka
+chown -R www-data:www-data /var/www/dujiaoka
+chmod -R 755 /var/www/dujiaoka
+chmod -R 775 /var/www/dujiaoka/storage /var/www/dujiaoka/bootstrap/cache
 ```
 ## 配置 nginx
 - 假设你的域名是：`domain.com`
@@ -104,7 +120,7 @@ server
         location ~ [^/]\.php(/|$)
         {
           
-            fastcgi_pass  unix:/var/run/php/php7.4-fpm.sock;
+            fastcgi_pass  unix:/var/run/php/php8.2-fpm.sock;
            
             include snippets/fastcgi-php.conf;
         }
@@ -135,31 +151,30 @@ server
 ```
 在 `/etc/nginx/sslcert/` 上传你的https证书 之后 `nginx -t` 没有报错就重启nginx `/etc/init.d/nginx restart`
 
-## composer 安装
+## Composer 安装
 ```bash
 cd /var/www/dujiaoka
 php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
 php composer-setup.php
 php -r "unlink('composer-setup.php');"
 mv composer.phar /usr/local/bin/composer
-adduser user
-su user
-composer install
-composer update
-su
+composer install --no-dev --optimize-autoloader
 ```
+
 ## 访问安装页面
 访问你的域名，进行安装
 - MySQL 数据库名：`dujiaoka`
-- MySQl 密码：`你设置的密码`
-- Redis 密码：`无需填写`
-- 网站URL：你的域名，如 `https://domain.com`
+- MySQL 密码：`你设置的密码`
+- Redis 密码：`无需填写（如未设置密码）`
+- 网站 URL：你的域名，如 `https://domain.com`
+- 管理后台路径：如 `/admin`
 
-##编辑配置文件
+## 编辑配置文件
 
 编辑 `/var/www/dujiaoka/.env`
-- 将 `APP_DEBUG=true` 改为 `APP_DEBUG=false`
+- 将 `APP_DEBUG=true` 改为 `APP_DEBUG=false`（**生产环境必须关闭**）
 - 系统会自动根据访问协议适配，无需手动配置 HTTPS
+- 如使用反代，配置 `TRUSTED_PROXIES` 为反代服务器 IP
 
 ## 配置 Supervisor
 先安装
@@ -172,17 +187,20 @@ nano /etc/supervisor/conf.d/dujiaoka.conf
 ```
 写入配置文件
 
-- 注意修改网站目录
+- 注意修改网站目录和用户
 ```bash
 [program:laravel-worker]
 process_name=%(program_name)s_%(process_num)02d
-command=php /home/wwwroot/dujiaoka/artisan queue:work
+command=php /var/www/dujiaoka/artisan queue:work --sleep=3 --tries=3 --max-time=3600
 autostart=true
 autorestart=true
-user=www
+stopasgroup=true
+killasgroup=true
+user=www-data
 numprocs=1
 redirect_stderr=true
-stdout_logfile=/home/wwwlogs/worker.log
+stdout_logfile=/var/log/dujiaoka-worker.log
+stopwaitsecs=3600
 ```
 启动
 ```bash
@@ -190,6 +208,14 @@ supervisorctl reread
 supervisorctl update
 supervisorctl start laravel-worker:*
 ```
+
+## 安装完成后
+
+1. 访问 `https://your-domain.com/admin` 登录管理后台
+2. 默认账号：`admin`，密码：`admin`
+3. **立即修改默认密码**（要求至少8位，含大小写字母和数字）
+4. 在后台配置支付方式、商品分类、商品信息等
+
 ## 参考来源
-https://www.digitalocean.com/community/tutorials/how-to-install-linux-nginx-mariadb-php-lemp-stack-on-debian-10
-https://github.com/assimon/dujiaoka/wiki/2.x_linux_install
+- https://www.digitalocean.com/community/tutorials/how-to-install-linux-nginx-mariadb-php-lemp-stack-on-debian-10
+- https://github.com/hiouttime/dujiaoka
