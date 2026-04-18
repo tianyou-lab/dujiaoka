@@ -104,31 +104,53 @@ install_packages() {
     log_step "安装系统依赖"
 
     export DEBIAN_FRONTEND=noninteractive
-    apt update -y
-    apt install -y software-properties-common curl wget git unzip
+
+    # --allow-releaseinfo-change: 云厂商镜像的 release 版本号漂移（如 13.3→13.4）会
+    # 阻塞后续 apt 操作，必须先放行
+    apt update -y --allow-releaseinfo-change
+    apt install -y software-properties-common curl wget git unzip \
+                   lsb-release apt-transport-https ca-certificates gnupg
 
     . /etc/os-release
 
-    if [ "$ID" = "debian" ] && [ "${VERSION_ID:-0}" -lt 12 ]; then
-        log_info "添加 Sury PHP 仓库..."
-        apt install -y lsb-release apt-transport-https ca-certificates
-        wget -qO- https://packages.sury.org/php/apt.gpg | gpg --dearmor -o /usr/share/keyrings/sury-php.gpg 2>/dev/null
-        echo "deb [signed-by=/usr/share/keyrings/sury-php.gpg] https://packages.sury.org/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/sury-php.list
-        apt update -y
+    # PHP ${PHP_VERSION} 在不同发行版里的可用情况：
+    #   - Debian 12 (bookworm): 默认仓库有 8.2，需要 Sury 才能装 8.3
+    #   - Debian 13 (trixie)  : 默认仓库只有 8.4，需要 Sury 才能装 8.3
+    #   - Ubuntu 22.04 (jammy): 默认仓库只有 8.1，需要 Ondrej PPA 才能装 8.3
+    #   - Ubuntu 24.04 (noble): 默认仓库只有 8.3 ✓
+    # 统一策略：Debian 全系走 Sury；Ubuntu 全系走 Ondrej PPA（幂等添加）
+    if [ "$ID" = "debian" ]; then
+        local sury_list="/etc/apt/sources.list.d/sury-php.list"
+        if [ ! -f "$sury_list" ]; then
+            log_info "添加 Sury PHP 仓库 ($(lsb_release -sc))..."
+            wget -qO- https://packages.sury.org/php/apt.gpg \
+                | gpg --dearmor -o /usr/share/keyrings/sury-php.gpg 2>/dev/null
+            echo "deb [signed-by=/usr/share/keyrings/sury-php.gpg] https://packages.sury.org/php/ $(lsb_release -sc) main" \
+                > "$sury_list"
+            apt update -y
+        else
+            log_info "Sury 仓库已存在，跳过添加"
+        fi
     elif [ "$ID" = "ubuntu" ]; then
-        log_info "添加 Ondrej PHP PPA..."
-        add-apt-repository -y ppa:ondrej/php
-        apt update -y
+        if ! grep -rqs "ondrej/php" /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null; then
+            log_info "添加 Ondrej PHP PPA..."
+            add-apt-repository -y ppa:ondrej/php
+            apt update -y
+        else
+            log_info "Ondrej PPA 已存在，跳过添加"
+        fi
+    else
+        log_warn "未识别的发行版 ID=$ID，跳过 PHP 仓库配置（将使用系统自带 PHP）"
     fi
 
     log_info "安装 Nginx..."
     apt install -y nginx
 
     log_info "安装 MariaDB..."
-    apt install -y mariadb-server
+    apt install -y mariadb-server mariadb-client
 
     log_info "安装 PHP ${PHP_VERSION}..."
-    apt install -y \
+    if ! apt install -y \
         php${PHP_VERSION} \
         php${PHP_VERSION}-fpm \
         php${PHP_VERSION}-mysql \
@@ -142,7 +164,14 @@ install_packages() {
         php${PHP_VERSION}-bcmath \
         php${PHP_VERSION}-redis \
         php${PHP_VERSION}-fileinfo \
-        php${PHP_VERSION}-xml
+        php${PHP_VERSION}-xml; then
+        log_error "PHP ${PHP_VERSION} 安装失败"
+        log_error "可用的 PHP 包："
+        apt-cache search "^php[0-9]+\.[0-9]+$" || true
+        log_error "提示：如果你在 Debian 13 上看到这个错误，说明 Sury 源未生效，"
+        log_error "  请检查 /etc/apt/sources.list.d/sury-php.list 与 apt update 输出"
+        exit 1
+    fi
 
     log_info "安装 Redis..."
     apt install -y redis-server
