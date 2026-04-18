@@ -181,9 +181,10 @@ CREATE TABLE `admin_users` (
 
 -- ----------------------------
 -- Records of admin_users
+-- WARNING: 默认密码 admin/admin，安装后必须立即修改！
 -- ----------------------------
 BEGIN;
-INSERT INTO `admin_users` (`id`, `username`, `password`, `name`, `avatar`, `remember_token`, `created_at`, `updated_at`) VALUES (1, 'admin', '$2y$10$e7z99Mhxm9BOHL55xHZTx.QcNTZJC6ftRXHCR/ZkBja/jBeasVeBy', 'Administrator', NULL, '4UAXF2BEw9EL1Tr2aGmwkv5DKwxqRF6djOMAHSiBMSOrPfPNHYrjCCQMtnTC', now(), now());
+INSERT INTO `admin_users` (`id`, `username`, `password`, `name`, `avatar`, `remember_token`, `created_at`, `updated_at`) VALUES (1, 'admin', '$2y$10$e7z99Mhxm9BOHL55xHZTx.QcNTZJC6ftRXHCR/ZkBja/jBeasVeBy', 'Administrator', NULL, NULL, now(), now());
 COMMIT;
 
 -- ----------------------------
@@ -425,6 +426,8 @@ CREATE TABLE `orders` (
   `search_pwd` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT '' COMMENT '查询密码',
   `buy_ip` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '下单IP',
   `trade_no` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '第三方支付订单号',
+  `paid_price` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT '实收金额（第三方回调金额）',
+  `coupon_returned_at` timestamp NULL DEFAULT NULL COMMENT '优惠券退还时间（幂等标记）',
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
   `deleted_at` timestamp NULL DEFAULT NULL,
@@ -474,7 +477,7 @@ CREATE TABLE `pays` (
 BEGIN;
 INSERT INTO `pays` VALUES (null ,'USDT-TRC20', 'tokenpay-usdt-trc', 0, 1, 3, 'USDT_TRC20', '你的API密钥', 'TokenPay地址', 'tokenpay', 0, 1, now(), now(), NULL);
 INSERT INTO `pays` VALUES (null ,'TRX', 'tokenpay-trx', 0, 1, 3, 'TRX', 'API密钥', 'TokenPay地址', 'tokenpay', 0, 1, now(), now(), NULL);
-INSERT INTO `pays` VALUES (null, 'Epusdt[trc20]', 'epusdt', 0, 1, 3, 'API密钥', '不填即可', 'api请求地址', 'epusdt', 0, 1, now(), now(), NULL);
+INSERT INTO `pays` VALUES (null, 'Epusdt[trc20]', 'epusdt-trc20', 0, 1, 3, 'API密钥', '不填即可', 'api请求地址', 'epusdt', 0, 1, now(), now(), NULL);
 INSERT INTO `pays` VALUES (null, '支付宝当面付', 'zfbf2f', 0, 2, 3, '商户号', '支付宝公钥', '商户私钥', 'alipay', 1, 1, now(), now(), NULL);
 INSERT INTO `pays` VALUES (null, '支付宝 PC', 'aliweb', 0, 1, 1, '商户号', '', '密钥', 'alipay', 1, 0, now(), now(), NULL);
 INSERT INTO `pays` VALUES (null, '支付宝 WAP', 'aliwap', 0, 1, 2, '商户号', '', '密钥', 'alipay', 1, 0, now(), now(), NULL);
@@ -534,6 +537,8 @@ CREATE TABLE `articles` (
   `title` varchar(255) NOT NULL COMMENT '文章标题',
   `category` varchar(255) NULL COMMENT '文章分类',
   `content` text NOT NULL COMMENT '文章内容',
+  `is_open` tinyint(1) NOT NULL DEFAULT '1' COMMENT '是否上架 1=上架 0=下架',
+  `sort` int NOT NULL DEFAULT '0' COMMENT '排序',
   `created_at` timestamp NULL DEFAULT NULL COMMENT '创建时间',
   `updated_at` timestamp NULL DEFAULT NULL COMMENT '更新时间',
   `deleted_at` timestamp NULL DEFAULT NULL COMMENT '删除时间',
@@ -554,7 +559,7 @@ COMMIT;
 DROP TABLE IF EXISTS `article_goods`;
 CREATE TABLE `article_goods` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `article_id` int NOT NULL COMMENT '文章ID',
+  `article_id` int unsigned NOT NULL COMMENT '文章ID',
   `goods_id` int NOT NULL COMMENT '商品ID',
   `sort` int NOT NULL DEFAULT '0' COMMENT '排序',
   `created_at` timestamp NULL DEFAULT NULL,
@@ -562,7 +567,9 @@ CREATE TABLE `article_goods` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `article_goods_article_id_goods_id_unique` (`article_id`,`goods_id`),
   KEY `article_goods_article_id_index` (`article_id`),
-  KEY `article_goods_goods_id_index` (`goods_id`)
+  KEY `article_goods_goods_id_index` (`goods_id`),
+  CONSTRAINT `fk_article_goods_article_id` FOREIGN KEY (`article_id`) REFERENCES `articles` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_article_goods_goods_id` FOREIGN KEY (`goods_id`) REFERENCES `goods` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------
@@ -580,7 +587,17 @@ CREATE TABLE `remote_servers` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT COMMENT '服务器ID',
   `name` varchar(255) NOT NULL COMMENT '服务器名称',
   `type` tinyint(1) NOT NULL DEFAULT '1' COMMENT '服务器类型  1HTTP 2RCON 3SQL',
-  `data` text COMMENT '服务器数据',
+  `url` varchar(500) DEFAULT NULL COMMENT 'HTTP服务器URL',
+  `host` varchar(255) DEFAULT NULL COMMENT 'RCON/SQL主机',
+  `port` int(5) DEFAULT NULL COMMENT '端口',
+  `username` varchar(255) DEFAULT NULL COMMENT '用户名',
+  `password` varchar(255) DEFAULT NULL COMMENT '密码',
+  `database` varchar(255) DEFAULT NULL COMMENT '数据库名',
+  `command` text COMMENT 'RCON命令/SQL语句',
+  `headers` json DEFAULT NULL COMMENT 'HTTP自定义请求头',
+  `body` json DEFAULT NULL COMMENT 'HTTP自定义请求体',
+  `description` text COMMENT '备注',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1' COMMENT '是否启用',
   `created_at` timestamp NULL DEFAULT NULL COMMENT '创建时间',
   `updated_at` timestamp NULL DEFAULT NULL COMMENT '更新时间',
   PRIMARY KEY (`id`)
@@ -645,6 +662,7 @@ CREATE TABLE `user_balance_records` (
   KEY `user_balance_records_user_id_foreign` (`user_id`),
   KEY `user_balance_records_user_id_type_index` (`user_id`,`type`),
   KEY `user_balance_records_related_order_sn_index` (`related_order_sn`),
+  UNIQUE KEY `ubr_user_type_related_order_sn_unique` (`user_id`,`type`,`related_order_sn`),
   CONSTRAINT `user_balance_records_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -750,7 +768,7 @@ INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `upd
 INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('shop', 'keywords', '"独角数卡,虚拟商品,自动发货"', 0, now(), now());
 INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('shop', 'description', '"独角数卡 - 专业的虚拟商品自动发货平台"', 0, now(), now());
 INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('shop', 'template', '"morpho"', 0, now(), now());
-INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('shop', 'language', '"zh-CN"', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('shop', 'language', '"zh_CN"', 0, now(), now());
 INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('shop', 'currency', '"CNY"', 0, now(), now());
 INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('shop', 'is_open_anti_red', 'false', 0, now(), now());
 INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('shop', 'is_cn_challenge', 'false', 0, now(), now());
