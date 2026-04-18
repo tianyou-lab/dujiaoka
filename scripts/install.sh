@@ -109,14 +109,19 @@ declare -A DETAIL=()
 detect_state() {
     log_step "探查服务器当前状态"
 
+    # 所有外部命令都包一层 timeout，避免在 verify 阶段被某个挂死的探测
+    # （例如 composer 的自检 / 慢镜像）拖死整个脚本
+    _probe() { timeout 8 "$@" 2>&1; }
+
     # ---------- 操作系统 ----------
     STATE[os]="ok"
     DETAIL[os]="${PRETTY_NAME} ($OS_KIND / $OS_CODENAME)"
+    log_info "  探测 nginx ..."
 
     # ---------- Nginx ----------
     if command -v nginx >/dev/null 2>&1; then
         local v
-        v=$(nginx -v 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+        v=$(_probe nginx -v | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
         if version_ge "${v:-0}" "$REQ_NGINX_MIN"; then
             STATE[nginx]="ok"
             DETAIL[nginx]="v${v}"
@@ -128,6 +133,7 @@ detect_state() {
         STATE[nginx]="missing"
         DETAIL[nginx]="未安装"
     fi
+    log_info "  探测 mariadb ..."
 
     # ---------- MariaDB / MySQL ----------
     local mysql_bin=""
@@ -138,7 +144,7 @@ detect_state() {
     fi
     if [ -n "$mysql_bin" ]; then
         local v
-        v=$("$mysql_bin" --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+        v=$(_probe "$mysql_bin" --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
         if [ -n "$v" ] && version_ge "$v" "$REQ_MARIADB_MIN"; then
             STATE[mariadb]="ok"
             DETAIL[mariadb]="${mysql_bin} v${v}"
@@ -150,12 +156,13 @@ detect_state() {
         STATE[mariadb]="missing"
         DETAIL[mariadb]="未安装"
     fi
+    log_info "  探测 php ..."
 
     # ---------- PHP ----------
     local php_bin="/usr/bin/php${PHP_VERSION}"
     if [ -x "$php_bin" ]; then
         local v
-        v=$("$php_bin" -r 'echo PHP_VERSION;')
+        v=$(_probe "$php_bin" -r 'echo PHP_VERSION;')
         STATE[php]="ok"
         DETAIL[php]="v${v} ($php_bin)"
         PHP_BIN="$php_bin"
@@ -167,7 +174,7 @@ detect_state() {
             local probe="$ext"
             [ "$ext" = "mysql" ] && probe="pdo_mysql"
             [ "$ext" = "dom" ]   && probe="dom"
-            if ! "$php_bin" -r "exit(extension_loaded('${probe}') ? 0 : 1);" >/dev/null 2>&1; then
+            if ! timeout 5 "$php_bin" -r "exit(extension_loaded('${probe}') ? 0 : 1);" >/dev/null 2>&1; then
                 missing_ext+=("$ext")
             fi
         done
@@ -183,7 +190,7 @@ detect_state() {
 
         # 探查禁用函数
         local disabled
-        disabled=$("$php_bin" -r 'echo ini_get("disable_functions") ?: "";')
+        disabled=$(_probe "$php_bin" -r 'echo ini_get("disable_functions") ?: "";')
         local bad_funcs=()
         for func in "${REQ_PHP_FUNC[@]}"; do
             if [[ ",$disabled," == *",$func,"* ]]; then
@@ -210,11 +217,12 @@ detect_state() {
         BAD_PHP_FUNC=()
         PHP_BIN=""
     fi
+    log_info "  探测 redis ..."
 
     # ---------- Redis ----------
     if command -v redis-server >/dev/null 2>&1; then
         local v
-        v=$(redis-server --version 2>&1 | grep -oE 'v=[0-9]+\.[0-9]+\.[0-9]+' | cut -d= -f2 | head -1)
+        v=$(_probe redis-server --version | grep -oE 'v=[0-9]+\.[0-9]+\.[0-9]+' | cut -d= -f2 | head -1)
         if [ -n "$v" ] && version_ge "$v" "$REQ_REDIS_MIN"; then
             STATE[redis]="ok"
             DETAIL[redis]="v${v}"
@@ -226,22 +234,31 @@ detect_state() {
         STATE[redis]="missing"
         DETAIL[redis]="未安装"
     fi
+    log_info "  探测 composer ..."
 
     # ---------- Composer ----------
+    # 注意：composer --version 默认会做自检/网络访问，慢镜像下可能挂几分钟
+    # 用 timeout + 关闭交互/插件，确保最多 10s 必有结果
     if command -v composer >/dev/null 2>&1; then
         local v
-        v=$(composer --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-        if [ -n "$v" ] && version_ge "$v" "$REQ_COMPOSER_MIN"; then
+        v=$(timeout 10 composer --version --no-interaction --no-plugins --no-cache 2>&1 \
+                | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+        if [ -z "$v" ]; then
+            # timeout 或网络异常 → 退而求其次，认为已安装但版本未知
+            STATE[composer]="ok"
+            DETAIL[composer]="已安装（版本探测超时，跳过版本校验）"
+        elif version_ge "$v" "$REQ_COMPOSER_MIN"; then
             STATE[composer]="ok"
             DETAIL[composer]="v${v}"
         else
             STATE[composer]="outdated"
-            DETAIL[composer]="v${v:-?} (需 >= $REQ_COMPOSER_MIN)"
+            DETAIL[composer]="v${v} (需 >= $REQ_COMPOSER_MIN)"
         fi
     else
         STATE[composer]="missing"
         DETAIL[composer]="未安装"
     fi
+    log_info "  探测 supervisor / git ..."
 
     # ---------- Supervisor ----------
     if command -v supervisord >/dev/null 2>&1; then
