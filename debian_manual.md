@@ -156,15 +156,39 @@ mv composer.phar /usr/local/bin/composer
 composer install --no-dev --optimize-autoloader
 ```
 
+## 创建初始 .env 文件
+
+Web 安装向导要求 Laravel 能先正常启动并渲染 `/install` 页面，必须**先从模板生成一个 `.env`**（向导提交后会自动覆盖写入你填的真实配置）：
+
+```bash
+cd /var/www/dujiaoka
+cp .env.default .env
+chown www-data:www-data .env
+chmod 664 .env
+# 同步修一下 storage / bootstrap/cache 权限
+chown -R www-data:www-data storage bootstrap/cache
+chmod -R 775 storage bootstrap/cache
+```
+
+> ⚠️ 跳过这一步直接访问站点会因为 Laravel 读不到 `APP_KEY` / `DB_*` 而报 500，页面一片空白或白屏。
+
 ## 访问安装页面
-访问你的域名，进行安装
+访问你的域名，未安装状态会自动跳转到 `/install` 向导。填写：
 - MySQL 数据库名：`dujiaoka`
+- MySQL 用户名：之前 `GRANT` 时创建的账号
 - MySQL 密码：`你设置的密码`
+- Redis 主机/端口：`127.0.0.1` / `6379`
 - Redis 密码：`无需填写（如未设置密码）`
 - 网站 URL：你的域名，如 `https://domain.com`
 - 管理后台路径：如 `/admin`
 
-## 编辑配置文件
+提交后安装程序会：
+1. 用你填的信息覆盖写入 `.env`
+2. 自动生成 `APP_KEY`
+3. 执行 `database/sql/install.sql` 初始化数据库
+4. 在项目根目录创建 `install.lock` 锁文件，防止重复安装
+
+## 安装后编辑配置文件
 
 编辑 `/var/www/dujiaoka/.env`
 - 将 `APP_DEBUG=true` 改为 `APP_DEBUG=false`（**生产环境必须关闭**）

@@ -152,9 +152,41 @@ bash <(curl -sL https://raw.githubusercontent.com/tianyou-lab/dujiaoka/main/scri
 
 ---
 
-### 方式二：宝塔面板部署
+### 方式二：宝塔面板一键部署（推荐小白）
 
-适用于已安装 [宝塔面板](https://www.bt.cn/) 的服务器。
+适用于已安装 [宝塔面板](https://www.bt.cn/) 的服务器。**脚本会自动检测 PHP 版本/扩展/禁用函数、自动装 Composer、自动建 .env、自动迁移数据库、自动配置队列守护进程**。
+
+#### 一键命令
+
+```bash
+cd /www/wwwroot/你的域名
+bash scripts/bt_install.sh
+```
+
+或远程一键：
+
+```bash
+bash <(curl -sL https://raw.githubusercontent.com/tianyou-lab/dujiaoka/main/scripts/bt_install.sh)
+```
+
+#### 前置条件（宝塔面板里先手动完成）
+
+1. 在「软件商店」安装：**Nginx + MySQL 8 + PHP 8.2/8.3 + Redis**
+2. 在「网站」→「添加站点」创建一个站点（同时勾选创建数据库），记下数据库名/用户/密码
+3. （可选）在「软件商店」安装 **Supervisor 管理器**（用于队列守护进程）
+
+然后 SSH 或宝塔终端进入站点目录，运行上面的一键命令即可。脚本会交互式询问必要信息（PHP 版本、数据库密码等），其他全自动。
+
+完成后记得按脚本最后的 TODO 清单：
+- 设置运行目录为 `/public`
+- 伪静态选择 `laravel5`
+- 申请 SSL 证书
+
+---
+
+### 方式三：宝塔面板手动部署
+
+如果你希望完全掌控每一步，参考以下手动流程。
 
 #### 1. 环境要求
 
@@ -239,11 +271,31 @@ chmod -R 755 .
 chmod -R 775 storage bootstrap/cache
 ```
 
-#### 9. 访问安装向导
+#### 9. 创建初始 .env 文件
 
-浏览器访问 `https://你的域名`，按提示填写数据库信息完成安装。
+Web 安装向导需要 Laravel 能正常启动并渲染 `/install` 页面，因此**必须先从模板创建一个 `.env` 文件**（向导提交后会自动用真实配置覆盖它）：
 
-#### 10. 配置队列（重要）
+```bash
+cd /www/wwwroot/你的域名
+cp .env.default .env
+chown www:www .env
+chmod 664 .env
+```
+
+> ⚠️ 如果跳过这一步，访问站点会因 Laravel 读不到 `APP_KEY` / `DB_*` 而直接报 500，看不到安装向导。
+
+#### 10. 访问安装向导
+
+浏览器访问 `https://你的域名`，未安装状态会自动跳转到 `/install` 向导。按提示填写：
+
+- **数据库**：第 3 步记录的库名/用户/密码
+- **Redis**：`127.0.0.1:6379`，密码通常留空（宝塔默认未设密码）
+- **站点 URL**：`https://你的域名`
+- **后台路径**：`/admin` 或自定义
+
+提交后安装程序会自动写入 `.env`、初始化数据库、生成 `install.lock` 锁文件。
+
+#### 11. 配置队列（重要）
 
 在宝塔面板 → **软件商店** → 搜索安装 **Supervisor 管理器**。
 
@@ -256,7 +308,7 @@ chmod -R 775 storage bootstrap/cache
 
 保存后确认进程状态为「运行中」。
 
-#### 11. 安装后配置
+#### 12. 安装后配置
 
 1. 编辑网站根目录下的 `.env` 文件：
    - 将 `APP_DEBUG=true` 改为 `APP_DEBUG=false`
@@ -267,7 +319,7 @@ chmod -R 775 storage bootstrap/cache
 
 ---
 
-### 方式三：手动安装
+### 方式四：Debian/Ubuntu 原生手动安装
 
 适用于熟悉 Linux 运维的用户，参见完整手动安装文档：
 - [Debian/Ubuntu 手动安装教程](debian_manual.md)
