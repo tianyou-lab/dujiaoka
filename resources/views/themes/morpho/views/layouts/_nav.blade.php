@@ -88,7 +88,7 @@
                       <ul class="dropdown-menu" style="--cz-dropdown-spacer: 1rem">
                         @foreach($item['children'] as $child)
                           <li>
-                            <a class="dropdown-item" href="{{ $child['url'] }}" {{ isset($child['target_blank']) && $child['target_blank'] ? 'target="_blank"' : '' }}>{{ $child['name'] }}</a>
+                            <a class="dropdown-item" href="{{ safe_url($child['url']) }}" {{ isset($child['target_blank']) && $child['target_blank'] ? 'target="_blank"' : '' }}>{{ $child['name'] }}</a>
                           </li>
                         @endforeach
                       </ul>
@@ -96,7 +96,7 @@
                   @else
                     <li class="nav-item me-lg-n2 me-xl-0">
                         <a class="nav-link fs-sm @if(\Illuminate\Support\Facades\Request::url() == url($item['url'])) active @endif" 
-                           href="{{ $item['url'] }}" 
+                           href="{{ safe_url($item['url']) }}" 
                            {{ isset($item['target_blank']) && $item['target_blank'] ? 'target="_blank"' : '' }}>
                           {{ $item['name'] }}
                         </a>

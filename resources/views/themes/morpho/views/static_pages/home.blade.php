@@ -55,7 +55,7 @@
                                                     </div>
                                                     <div class="notice-content text-body fs-6 lh-lg pe-2" 
                                                          style="height: 22rem; overflow-y: auto;">
-                                                        {!! $slide['content'] !!}
+                                                        {!! purifyHtml($slide['content']) !!}
                                                     </div>
                                                 </div>
                                             @else
@@ -68,7 +68,7 @@
                                                             <h2 class="display-5 fw-bold mb-4">{{ $slide['title'] }}</h2>
                                                         @endif
                                                         @if($slide['button_text'] && $slide['button_url'])
-                                                            <a href="{{ $slide['button_url'] }}" 
+                                                            <a href="{{ safe_url($slide['button_url']) }}" 
                                                                class="btn btn-dark btn-lg"
                                                                {{ $slide['target_blank'] ? 'target="_blank"' : '' }}>
                                                                 {{ $slide['button_text'] }}

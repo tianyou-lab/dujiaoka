@@ -1,6 +1,6 @@
 @php
     $stock = $goods['type'] == 1 
-        ? collect($goods['goods_sub'])->sum(fn($sub) => \App\Models\Carmis::where('sub_id', $sub['id'])->where('status', 1)->count())
+        ? (int)($goods['_auto_stock'] ?? collect($goods['goods_sub'])->sum('stock'))
         : collect($goods['goods_sub'])->sum('stock');
     $isAvailable = $stock > 0;
     $buyUrl = $isAvailable ? url("/buy/{$goods['id']}") : 'javascript:void(0);';

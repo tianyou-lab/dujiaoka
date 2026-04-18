@@ -33,18 +33,19 @@
     
     {{-- 主题自定义Meta标签 --}}
     @if(theme_config('custom_meta'))
-        {!! theme_config('custom_meta') !!}
+        {!! purifyHtml(theme_config('custom_meta')) !!}
     @endif
     
     {{-- Google Analytics --}}
     @if(theme_config('google_analytics'))
+        @php $gaId = preg_replace('/[^A-Za-z0-9\-]/', '', theme_config('google_analytics')); @endphp
         <!-- Global site tag (gtag.js) - Google Analytics -->
-        <script async src="https://www.googletagmanager.com/gtag/js?id={{ theme_config('google_analytics') }}"></script>
+        <script async src="https://www.googletagmanager.com/gtag/js?id={{ $gaId }}"></script>
         <script>
           window.dataLayer = window.dataLayer || [];
           function gtag(){dataLayer.push(arguments);}
           gtag('js', new Date());
-          gtag('config', '{{ theme_config('google_analytics') }}');
+          gtag('config', @json($gaId));
         </script>
     @endif
     

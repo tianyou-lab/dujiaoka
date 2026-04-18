@@ -85,16 +85,22 @@
                 <div class="mb-3">
                   <div class="d-flex justify-content-between align-items-start mb-2">
                     <h4 class="h6 mb-0">{{ $item->goods_name }}</h4>
-                    <span class="badge bg-{{ $item->type == 1 ? 'success' : 'warning' }}">
-                      {{ $item->type == 1 ? '自动发货' : '人工发货' }}
-                    </span>
+                    @if($item->goods_id == 0)
+                      <span class="badge bg-info">余额充值</span>
+                    @elseif(!$item->goods)
+                      <span class="badge bg-secondary">商品已删除</span>
+                    @else
+                      <span class="badge bg-{{ $item->type == 1 ? 'success' : 'warning' }}">
+                        {{ $item->type == 1 ? '自动发货' : '人工发货' }}
+                      </span>
+                    @endif
                   </div>
                   <div class="small text-muted">
                     单价：{{ currency_symbol() }}{{ $item->unit_price }} × {{ $item->quantity }} = {{ currency_symbol() }}{{ $item->subtotal }}
                   </div>
                 </div>
                 
-                @if($item->goods->usage_instructions)
+                @if($item->goods && $item->goods->usage_instructions)
                   <!-- 使用说明 -->
                   <div class="bg-light rounded p-3 mb-3">
                     <div class="d-flex justify-content-between align-items-center">

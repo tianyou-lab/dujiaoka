@@ -44,7 +44,7 @@
                         <div class="mt-2 p-2 bg-light rounded">
                           <small class="text-body-secondary d-block mb-1">订单信息:</small>
                           <small class="text-dark-emphasis">
-                            {!! $item->info !!}
+                            {!! nl2br(e($item->info)) !!}
                           </small>
                         </div>
                       @endif
@@ -64,7 +64,7 @@
 
                 <!-- 商品类型 -->
                 <td class="py-3 d-none d-lg-table-cell">
-                  @if($item->type == \App\Models\Order::AUTOMATIC_DELIVERY)
+                  @if($item->type == \App\Models\Goods::AUTOMATIC_DELIVERY)
                     <span class="badge bg-success">{{ __('goods.fields.automatic_delivery') }}</span>
                   @else
                     <span class="badge bg-warning">{{ __('goods.fields.manual_processing') }}</span>
@@ -155,10 +155,12 @@
                 </div>
 
                 <!-- 支付按钮 (PC端) -->
+                @if($pay && !empty($pay['pay_handleroute']))
                 <a class="btn btn-lg btn-dark w-100 d-none d-lg-flex"
                    href="{{ url('pay/' . $pay['pay_handleroute'] . '/' . $pay['pay_check'] . '/' . $order_sn) }}">
                   {{ __('dujiaoka.pay_immediately') }} {{ $actual_price }} {{ __('dujiaoka.money_symbol') }}
                 </a>
+                @endif
 
               </div>
             </div>
@@ -169,13 +171,15 @@
   </section>
 </main>
 
-<!-- 底部固定“支付”按钮 (移动端) -->
-<div class="fixed-bottom z-sticky w-100 py-2 px-3 bg-body border-top shadow d-lg-none">
-  <a class="btn btn-lg btn-dark w-100"
-     href="{{ url('pay/' . $pay['pay_handleroute'] . '/' . $pay['pay_check'] . '/' . $order_sn) }}">
+<!-- 底部固定”支付”按钮 (移动端) -->
+@if($pay && !empty($pay['pay_handleroute']))
+<div class=”fixed-bottom z-sticky w-100 py-2 px-3 bg-body border-top shadow d-lg-none”>
+  <a class=”btn btn-lg btn-dark w-100”
+     href=”{{ url('pay/' . $pay['pay_handleroute'] . '/' . $pay['pay_check'] . '/' . $order_sn) }}”>
     {{ __('dujiaoka.pay_immediately') }} {{ $actual_price }} {{ __('dujiaoka.money_symbol') }}
   </a>
 </div>
+@endif
 @stop
 @section('js')
 @stop

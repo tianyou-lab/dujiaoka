@@ -127,11 +127,11 @@
                                             required>
                                         <option value="">请选择支付方式</option>
                                         @php
-                                            $payMethods = \App\Models\Pay::where('status', 1)->get();
+                                            $payMethods = \App\Models\Pay::where('enable', 1)->get();
                                         @endphp
                                         @foreach($payMethods as $pay)
                                             <option value="{{ $pay->id }}" {{ old('pay_id') == $pay->id ? 'selected' : '' }}>
-                                                {{ $pay->name }}
+                                                {{ $pay->pay_name }}
                                             </option>
                                         @endforeach
                                     </select>
@@ -216,7 +216,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const amountInput = document.getElementById('amount');
     const addAmountSpan = document.getElementById('addAmount');
     const totalAmountSpan = document.getElementById('totalAmount');
-    const currentBalance = {{ auth('web')->user()->balance }};
+    const currentBalance = parseFloat(@json(auth('web')->user()->balance)) || 0;
     const quickAmountButtons = document.querySelectorAll('.quick-amount');
 
     // 快捷金额选择

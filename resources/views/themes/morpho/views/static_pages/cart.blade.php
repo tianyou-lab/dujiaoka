@@ -137,6 +137,12 @@
 const CURRENCY_SYMBOL = '{{ currency_symbol() }}';
 let paymentMethods = [];
 
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.appendChild(document.createTextNode(String(str)));
+  return div.innerHTML;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   renderCart();
 });
@@ -188,10 +194,10 @@ function renderPaymentMethods() {
     const option = document.createElement('label');
     option.className = 'payment-method-option';
     option.innerHTML = `
-      <input type="radio" class="btn-check" name="payway" value="${method.id}" 
-             id="pay-${method.id}" ${index === 0 ? 'checked' : ''}>
+      <input type="radio" class="btn-check" name="payway" value="${escapeHtml(method.id)}" 
+             id="pay-${escapeHtml(method.id)}" ${index === 0 ? 'checked' : ''}>
       <span class="btn btn-outline-dark">
-        <div class="paymentsvg" data-type="${method.pay_check || method.name.toLowerCase()}"></div>
+        <div class="paymentsvg" data-type="${escapeHtml(method.pay_check || method.name.toLowerCase())}"></div>
       </span>
     `;
     
@@ -239,17 +245,17 @@ function renderCart() {
     // 生成自定义字段摘要
     const fieldsHtml = item.custom_fields && Object.keys(item.custom_fields).length 
       ? `<div class="mt-2">${Object.entries(item.custom_fields).map(([key, value]) => 
-          `<small class="text-muted d-block">${key}: ${['0', '1', 0, 1].includes(value) ? (value == 1 ? '是' : '否') : value}</small>`
+          `<small class="text-muted d-block">${escapeHtml(key)}: ${['0', '1', 0, 1].includes(value) ? (value == 1 ? '是' : '否') : escapeHtml(value)}</small>`
         ).join('')}</div>`
       : '';
     
     itemElement.innerHTML = `
       <div class="row align-items-center">
         <div class="col-auto">
-          <img src="${item.image || '/assets/common/images/default.jpg'}" class="cart-item-image" alt="${item.name}">
+          <img src="${escapeHtml(item.image || '/assets/common/images/default.jpg')}" class="cart-item-image" alt="${escapeHtml(item.name)}">
         </div>
         <div class="col">
-          <h6 class="mb-1">${item.name}</h6>
+          <h6 class="mb-1">${escapeHtml(item.name)}</h6>
           <small class="text-muted">单价: ${CURRENCY_SYMBOL}${item.price.toFixed(2)}</small>
           ${fieldsHtml}
         </div>

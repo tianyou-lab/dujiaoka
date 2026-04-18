@@ -7,5 +7,5 @@
 
 {{-- 页脚自定义代码 --}}
 @if(!empty(app(\App\Settings\ShopSettings::class)->footer))
-    {!! app(\App\Settings\ShopSettings::class)->footer !!}
+    {!! purifyHtml(app(\App\Settings\ShopSettings::class)->footer) !!}
 @endif

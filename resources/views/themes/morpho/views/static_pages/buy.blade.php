@@ -44,9 +44,9 @@
                       <i class="ci-broccoli fs-xl text-body-emphasis me-2"></i>
                       库存：<span id="currentStock">
                         @if(count($goods_sub) > 1)
-                          {{ $type == 1 ? \App\Models\Carmis::where('sub_id', $goods_sub[0]['id'])->where('status', 1)->count() : $goods_sub[0]['stock'] }}
+                          {{ $type == 1 ? ($sub_stocks[$goods_sub[0]['id']] ?? 0) : $goods_sub[0]['stock'] }}
                         @else
-                          {{ $type == 1 ? collect($goods_sub)->sum(fn($sub) => \App\Models\Carmis::where('sub_id', $sub['id'])->where('status', 1)->count()) : collect($goods_sub)->sum('stock') }}
+                          {{ $type == 1 ? collect($goods_sub)->sum(fn($sub) => ($sub_stocks[$sub['id']] ?? 0)) : collect($goods_sub)->sum('stock') }}
                         @endif
                       </span>
                     </div>
@@ -68,9 +68,7 @@
                       <div class="d-flex flex-wrap gap-2" id="specGroup">
                         @foreach($goods_sub as $index => $sub)
                           @php
-                            $subStock = $type == 1 ? 
-                              \App\Models\Carmis::where('sub_id', $sub['id'])->where('status', 1)->count() : 
-                              $sub['stock'];
+                            $subStock = $type == 1 ? ($sub_stocks[$sub['id']] ?? 0) : $sub['stock'];
                           @endphp
                           <label class="spec-option" data-price="{{ $sub['price'] }}" data-stock="{{ $subStock }}" data-sub-id="{{ $sub['id'] }}">
                             <input type="radio" class="btn-check" name="sub_id" value="{{ $sub['id'] }}" 
@@ -238,7 +236,7 @@
                         <div>
                           <strong>需要登录购买</strong><br>
                           <small>此商品需要登录后才能购买，请先 
-                            <a href="{{ url('/user/login') }}" class="alert-link">点击登录</a>
+                            <a href="{{ route('login') }}" class="alert-link">点击登录</a>
                           </small>
                         </div>
                       </div>
@@ -253,8 +251,8 @@
                       </button>
                       @php
                         $initialStock = count($goods_sub) > 1 ? 
-                          ($type == 1 ? \App\Models\Carmis::where('sub_id', $goods_sub[0]['id'])->where('status', 1)->count() : $goods_sub[0]['stock']) :
-                          ($type == 1 ? collect($goods_sub)->sum(fn($sub) => \App\Models\Carmis::where('sub_id', $sub['id'])->where('status', 1)->count()) : collect($goods_sub)->sum('stock'));
+                          ($type == 1 ? ($sub_stocks[$goods_sub[0]['id']] ?? 0) : $goods_sub[0]['stock']) :
+                          ($type == 1 ? collect($goods_sub)->sum(fn($sub) => ($sub_stocks[$sub['id']] ?? 0)) : collect($goods_sub)->sum('stock'));
                       @endphp
                       <input type="number" class="form-control form-control-xl w-50" name="by_amount" min="1"
                              max="{{ $initialStock }}" value="1"
@@ -268,7 +266,7 @@
   
                     <div class="d-flex gap-2 w-100">
                       @if(isset($need_login) && $need_login)
-                        <a href="{{ url('/user/login') }}" class="btn btn-lg btn-primary w-100">
+                        <a href="{{ route('login') }}" class="btn btn-lg btn-primary w-100">
                           <i class="ci-user me-2"></i>请先登录
                         </a>
                       @else
@@ -343,7 +341,7 @@
           </div>
 
           <div class="row">
-            {!! $description !!}
+            {!! purifyHtml($description) !!}
           </div>
         </section>
         
@@ -397,7 +395,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    {!! $buy_prompt !!}
+                    {!! purifyHtml($buy_prompt) !!}
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ __('dujiaoka.close') }}</button>
@@ -568,7 +566,7 @@
                     return {
                         goods_id: {{ $id }},
                         sub_id: {{ $goods_sub[0]['id'] }},
-                        stock: {{ $type == 1 ? collect($goods_sub)->sum(fn($sub) => \App\Models\Carmis::where('sub_id', $sub['id'])->where('status', 1)->count()) : collect($goods_sub)->sum('stock') }}
+                        stock: {{ $type == 1 ? collect($goods_sub)->sum(fn($sub) => ($sub_stocks[$sub['id']] ?? 0)) : collect($goods_sub)->sum('stock') }}
                     };
                 @endif
             }
@@ -586,7 +584,7 @@
             });
             
             @if(count($goods_sub) > 1)
-                const initStock = {{ $type == 1 ? \App\Models\Carmis::where('sub_id', $goods_sub[0]['id'])->where('status', 1)->count() : $goods_sub[0]['stock'] }};
+                const initStock = {{ $type == 1 ? ($sub_stocks[$goods_sub[0]['id']] ?? 0) : $goods_sub[0]['stock'] }};
                 if (initStock <= 0) {
                     addToCartBtn.prop('disabled', true);
                     buyNowBtn.prop('disabled', true).text('缺货');

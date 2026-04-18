@@ -49,7 +49,7 @@
                                             
       <a href="javascript:history.back(-1);"  class="btn btn-lg btn-dark">{{ __('dujiaoka.callback') }}</a>                                      
       @else
-      <a href="{{ $url }}"  class="btn btn-outline-dark">{{ __('dujiaoka.callback') }}</a>                           
+      <a href="{{ safe_url($url) }}"  class="btn btn-outline-dark">{{ __('dujiaoka.callback') }}</a>                           
       @endif
     </section>
   </div>

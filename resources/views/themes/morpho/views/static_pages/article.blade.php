@@ -17,7 +17,7 @@
                     <div class="card-body">
                         <h1 class="mb-4">{{ $title }}</h1>
                         <div class="article-content">
-                            {!! $content !!}
+                            {!! purifyHtml($content) !!}
                         </div>
                         
                     </div>
