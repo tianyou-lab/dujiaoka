@@ -72,7 +72,7 @@ class BarkPush implements ShouldQueue
                 . __('order.fields.order_created') .': '.$this->order->created_at,
             "icon" => url('assets/common/images/default.jpg'),
             "level" => "timeSensitive",
-            "group" => cfg('text_logo', '独角数卡')
+            "group" => cfg('text_logo', '启航数卡')
         ];
         if (cfg('is_open_bark_push_url', 0) == BaseModel::STATUS_OPEN) {
             $params["url"] = url('/order/detail/' . $this->order->order_sn);

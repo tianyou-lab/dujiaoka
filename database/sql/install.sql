@@ -762,11 +762,11 @@ BEGIN;
 INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('system', 'contact_required', '"email"', 0, now(), now());
 
 -- Shop Settings 基础设置
-INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('shop', 'title', '"独角数卡"', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('shop', 'title', '"启航数卡"', 0, now(), now());
 INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('shop', 'img_logo', '"/assets/common/images/logo.svg"', 0, now(), now());
 INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('shop', 'text_logo', 'null', 0, now(), now());
-INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('shop', 'keywords', '"独角数卡,虚拟商品,自动发货"', 0, now(), now());
-INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('shop', 'description', '"独角数卡 - 专业的虚拟商品自动发货平台"', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('shop', 'keywords', '"启航数卡,虚拟商品,自动发货"', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('shop', 'description', '"启航数卡 - 专业的虚拟商品自动发货平台"', 0, now(), now());
 INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('shop', 'template', '"morpho"', 0, now(), now());
 INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('shop', 'language', '"zh_CN"', 0, now(), now());
 INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('shop', 'currency', '"CNY"', 0, now(), now());

@@ -43,7 +43,7 @@ class OrderUpdated
         $order = [
             'created_at' => date('Y-m-d H:i'),
             'ord_title' => $firstItem->goods_name ?? '未知商品',
-            'webname' => $sysCache['text_logo'] ?? '独角数卡',
+            'webname' => $sysCache['text_logo'] ?? '启航数卡',
             'weburl' => config('app.url'),
             'order_id' => $event->order->order_sn,
             'ord_price' => $event->order->actual_price,

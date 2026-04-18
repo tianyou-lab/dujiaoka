@@ -16,11 +16,9 @@
             </ul>
             <div class="vr text-body-secondary opacity-25 mx-4 d-none d-md-inline-block order-md-2"></div>
             <p class="fs-xs text-center text-lg-start mb-0 order-md-1">
-              © {{ date('Y') }} {{ app(\App\Settings\ShopSettings::class)->title }} All rights reserved. 
-              <br/>Powered by 
-              <span class="animate-underline"><a class="animate-target text-dark-emphasis text-decoration-none" href="https://github.com/hiouttime/dujiaoka" target="_blank" rel="noreferrer">独角数卡</a></span>.
-              Theme by
-              <span class="animate-underline"><a class="animate-target text-dark-emphasis text-decoration-none" href="https://t.me/riniba" target="_blank" rel="noreferrer">@riniba</a></span>
+              © {{ date('Y') }} {{ app(\App\Settings\ShopSettings::class)->title }} All rights reserved.
+              <br/>Powered by
+              <span class="animate-underline"><a class="animate-target text-dark-emphasis text-decoration-none" href="#" rel="noreferrer">启航数卡</a></span>.
             </p>
             <p>
   </p>

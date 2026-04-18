@@ -121,7 +121,7 @@ class Installer
         try {
             $appKey = $data['app_key'] ?? 'base64:' . base64_encode(random_bytes(32));
             $config = [
-                'APP_NAME' => $data['title'] ?? '独角数卡',
+                'APP_NAME' => $data['title'] ?? '启航数卡',
                 'APP_ENV' => $data['app_env'] ?? 'production',
                 'APP_KEY' => $appKey,
                 'APP_DEBUG' => $data['app_debug'] ?? 'false',

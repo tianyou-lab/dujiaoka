@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * The file was created by Assimon.
  *

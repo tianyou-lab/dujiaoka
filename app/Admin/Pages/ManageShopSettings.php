@@ -63,7 +63,7 @@ class ManageShopSettings extends SettingsPage
                                                         TextInput::make('title')
                                                             ->label('网站标题')
                                                             ->required()
-                                                            ->default('独角数卡')
+                                                            ->default('启航数卡')
                                                             ->maxLength(255)
                                                             ->helperText('显示在网站标题栏和搜索结果中'),
                                                         
