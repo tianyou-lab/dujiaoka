@@ -9,6 +9,7 @@ use Filament\Resources\Resource;
 use Filament\Tables\{Table, Columns\TextColumn, Actions\Action};
 use Filament\{Tables, Notifications\Notification};
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rules\Password;
 
 class AdminUsers extends Resource
 {
@@ -38,7 +39,8 @@ class AdminUsers extends Resource
                             ->dehydrateStateUsing(fn ($state) => filled($state) ? Hash::make($state) : null)
                             ->dehydrated(fn ($state) => filled($state))
                             ->required(fn (string $context): bool => $context === 'create')
-                            ->helperText('留空则不修改密码'),
+                            ->rules([Password::min(8)->mixedCase()->numbers()])
+                            ->helperText('留空则不修改密码（至少8位，需含大小写和数字）'),
                     ])->columns(2),
 
                 Section::make('角色权限')
@@ -74,7 +76,7 @@ class AdminUsers extends Resource
                             ->label('新密码')
                             ->password()
                             ->required()
-                            ->minLength(6),
+                            ->rules([Password::min(8)->mixedCase()->numbers()]),
                             
                         TextInput::make('password_confirmation')
                             ->label('确认密码')

@@ -320,7 +320,7 @@ class Products extends Resource
                     ->label('库存')
                     ->formatStateUsing(function (Goods $record) {
                         return $record->type == Goods::AUTOMATIC_DELIVERY
-                            ? Carmis::whereIn('sub_id', $record->goods_sub()->pluck('id'))->where('status', Carmis::STATUS_UNSOLD ?? 1)->count()
+                            ? Carmis::where('goods_id', $record->id)->whereIn('sub_id', $record->goods_sub()->pluck('id'))->where('status', Carmis::STATUS_UNSOLD ?? 1)->count()
                             : $record->goods_sub()->sum('stock');
                     })
                     ->sortable(),

@@ -33,8 +33,12 @@ class ConfigManager
 
     public function flush(): void
     {
+        foreach (array_keys($this->configs) as $key) {
+            Cache::forget($this->cachePrefix . $key);
+        }
         $this->configs = [];
-        Cache::flush();
+        Cache::forget('system-setting');
+        Cache::forget('payment-config');
     }
 
     protected function resolveConfig(string $key, $default)

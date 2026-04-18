@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class OrderItem extends Model
 {
     protected $table = 'order_items';
-    
+
     protected $fillable = [
         'order_id',
         'goods_id',
@@ -35,7 +35,8 @@ class OrderItem extends Model
 
     public function goods(): BelongsTo
     {
-        return $this->belongsTo(Goods::class);
+        // withTrashed 确保软删除商品在履约阶段仍可读取，防止 goods=null 跳过发货
+        return $this->belongsTo(Goods::class)->withTrashed();
     }
 
     public function goodsSub(): BelongsTo

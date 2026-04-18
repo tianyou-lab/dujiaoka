@@ -25,9 +25,12 @@ class CacheManager
     const STATS_CACHE_TIME = 1800;
 
     /**
-     * 库存锁定缓存时间（秒）- 30分钟（与订单过期时间相关）
+     * 库存锁定缓存时间（秒）- 动态跟随订单过期配置，最少 300 秒
      */
-    const STOCK_LOCK_TIME = 1800;
+    private static function stockLockTtl(): int
+    {
+        return max(300, (int)cfg('order_expire_time', 5) * 60);
+    }
 
     /**
      * 生成商品缓存键
@@ -136,11 +139,13 @@ class CacheManager
      */
     public static function forgetAllEmailTemplates(): void
     {
-        LaravelCache::forget('email_template_pending_order');
-        LaravelCache::forget('email_template_completed_order');
-        LaravelCache::forget('email_template_failed_order');
-        LaravelCache::forget('email_template_manual_send_manage_mail');
-        LaravelCache::forget('email_template_card_send_user_email');
+        $tokens = \App\Models\Emailtpl::pluck('tpl_token')->toArray();
+        $defaultTokens = ['pending_order', 'completed_order', 'failed_order', 'manual_send_manage_mail', 'card_send_user_email'];
+        $allTokens = array_unique(array_merge($defaultTokens, $tokens));
+
+        foreach ($allTokens as $token) {
+            LaravelCache::forget("email_template_{$token}");
+        }
     }
 
     /**
@@ -186,21 +191,38 @@ class CacheManager
     }
 
     /**
+     * 检查缓存驱动是否支持原子操作，非 redis/memcached 等驱动下库存锁不安全
+     */
+    private static function assertAtomicDriver(): void
+    {
+        $driver = config('cache.default');
+        if (in_array($driver, ['file', 'array', 'null'])) {
+            \Illuminate\Support\Facades\Log::warning(
+                "库存锁定使用了 [{$driver}] 缓存驱动，并发场景下不安全，建议切换到 redis 或 memcached"
+            );
+        }
+    }
+
+    /**
      * 简单锁定库存（下单即减库存模式）
      */
     public static function lockStock(int $subId, int $quantity, string $orderSn): bool
     {
+        self::assertAtomicDriver();
         $lockKey = self::stockLockKey($subId);
         $orderStockKey = self::orderStockLockKey($orderSn);
-        
-        // 记录锁定数量
+
+        // increment 不会自动设置 TTL，需要在 key 不存在时先初始化带 TTL 的值
+        if (!LaravelCache::has($lockKey)) {
+            LaravelCache::put($lockKey, 0, self::stockLockTtl());
+        }
         LaravelCache::increment($lockKey, $quantity);
-        
+
         // 记录订单锁定的商品信息（用于释放）
         $orderStock = LaravelCache::get($orderStockKey, []);
         $orderStock[] = ['sub_id' => $subId, 'quantity' => $quantity];
-        LaravelCache::put($orderStockKey, $orderStock, self::STOCK_LOCK_TIME);
-        
+        LaravelCache::put($orderStockKey, $orderStock, self::stockLockTtl());
+
         return true;
     }
 
@@ -214,7 +236,10 @@ class CacheManager
         
         foreach ($orderStock as $item) {
             $lockKey = self::stockLockKey($item['sub_id']);
-            LaravelCache::decrement($lockKey, $item['quantity']);
+            $current = LaravelCache::decrement($lockKey, $item['quantity']);
+            if ($current < 0) {
+                LaravelCache::put($lockKey, 0, self::stockLockTtl());
+            }
         }
         
         LaravelCache::forget($orderStockKey);
@@ -236,5 +261,26 @@ class CacheManager
     {
         $availableStock = $actualStock - self::getLockedStock($subId);
         return $availableStock >= $requestQuantity;
+    }
+
+    /**
+     * 原子"检查+锁定"库存，防止并发超卖。
+     * 使用 Cache lock 保证同一 subId 同一时刻只有一个请求执行检查+锁定。
+     */
+    public static function checkAndLockStock(int $subId, int $quantity, int $actualStock, string $orderSn): bool
+    {
+        $mutex = LaravelCache::lock("stock_mutex_{$subId}", 5);
+        if (!$mutex->get()) {
+            return false;
+        }
+        try {
+            if (!self::checkStockAvailable($subId, $quantity, $actualStock)) {
+                return false;
+            }
+            self::lockStock($subId, $quantity, $orderSn);
+            return true;
+        } finally {
+            $mutex->release();
+        }
     }
 }

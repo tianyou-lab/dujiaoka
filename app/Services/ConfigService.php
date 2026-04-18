@@ -37,22 +37,26 @@ class ConfigService
     protected function loadConfig(): void
     {
         $this->config = Cache::get('system-setting', []);
-        
+
         // Redis 没数据时从数据库读取一次
         if (empty($this->config)) {
             try {
                 $settings = DB::table('settings')->get();
                 $config = [];
-                
+
                 foreach ($settings as $setting) {
                     $payload = json_decode($setting->payload, true);
-                    // 构建嵌套结构：config[group][name] = payload
+                    // 嵌套结构：config[group][name] = payload
                     if (!isset($config[$setting->group])) {
                         $config[$setting->group] = [];
                     }
                     $config[$setting->group][$setting->name] = $payload;
+                    // 平铺映射：config[name] = payload（兼容 cfg('stock_mode') 直接读取）
+                    if (!isset($config[$setting->name])) {
+                        $config[$setting->name] = $payload;
+                    }
                 }
-                
+
                 $this->config = $config;
                 if (!empty($config)) {
                     Cache::put('system-setting', $config);
@@ -61,7 +65,7 @@ class ConfigService
                 $this->config = [];
             }
         }
-        
+
         $this->loaded = true;
     }
 

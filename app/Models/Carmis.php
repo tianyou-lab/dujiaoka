@@ -15,7 +15,9 @@ class Carmis extends BaseModel
         'goods_id',
         'sub_id', 
         'carmi',
-        'status'
+        'status',
+        'is_loop',
+        'info',
     ];
 
     /**

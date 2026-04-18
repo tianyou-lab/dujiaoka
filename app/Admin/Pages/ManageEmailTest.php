@@ -52,7 +52,8 @@ class ManageEmailTest extends Page
                             ->label(__('email-test.labels.to'))
                             ->email()
                             ->required()
-                            ->helperText('请输入接收测试邮件的邮箱地址'),
+                            ->default(fn () => auth()->user()?->email ?? '')
+                            ->helperText('仅限发送到管理员邮箱，防止滥用'),
 
                         Forms\Components\TextInput::make('title')
                             ->label(__('email-test.labels.title'))
@@ -79,6 +80,16 @@ class ManageEmailTest extends Page
             $to = $data['to'];
             $title = $data['title'];
             $body = $data['body'];
+
+            $adminEmail = auth()->user()?->email;
+            if (!$adminEmail || $to !== $adminEmail) {
+                Notification::make()
+                    ->title('发送失败')
+                    ->body('测试邮件只能发送到当前管理员邮箱: ' . e($adminEmail))
+                    ->danger()
+                    ->send();
+                throw new Halt();
+            }
 
             // 获取邮件配置
             $mailSettings = app(MailSettings::class);
@@ -109,13 +120,16 @@ class ManageEmailTest extends Page
                 ->success()
                 ->send();
 
+        } catch (Halt $e) {
+            throw $e;
         } catch (\Exception $e) {
+            \Log::error('邮件发送测试失败', ['error' => $e->getMessage()]);
             Notification::make()
                 ->title('发送失败')
-                ->body($e->getMessage())
+                ->body('邮件发送失败，请检查 SMTP 配置是否正确。详细错误已记录到日志。')
                 ->danger()
                 ->send();
-            
+
             throw new Halt();
         }
     }

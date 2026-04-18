@@ -186,34 +186,38 @@ class Users extends Resource
                             ->default('管理员调整'),
                     ])
                     ->action(function (User $record, array $data) {
-                        $balanceBefore = $record->balance;
-                        
-                        switch ($data['type']) {
-                            case 'add':
-                                $balanceAfter = $balanceBefore + $data['amount'];
-                                $amount = $data['amount'];
-                                break;
-                            case 'subtract':
-                                $balanceAfter = max(0, $balanceBefore - $data['amount']);
-                                $amount = -$data['amount'];
-                                break;
-                            case 'set':
-                                $balanceAfter = $data['amount'];
-                                $amount = $balanceAfter - $balanceBefore;
-                                break;
-                        }
-                        
-                        $record->update(['balance' => $balanceAfter]);
-                        
-                        $record->balanceRecords()->create([
-                            'type' => 'admin',
-                            'amount' => $amount,
-                            'balance_before' => $balanceBefore,
-                            'balance_after' => $balanceAfter,
-                            'description' => $data['description'],
-                            'admin_id' => auth()->id(),
-                        ]);
-                        
+                        \Illuminate\Support\Facades\DB::transaction(function () use ($record, $data) {
+                            $user = User::lockForUpdate()->find($record->id);
+                            $balanceBefore = $user->balance;
+
+                            switch ($data['type']) {
+                                case 'add':
+                                    $balanceAfter = $balanceBefore + $data['amount'];
+                                    $amount = $data['amount'];
+                                    break;
+                                case 'subtract':
+                                    $balanceAfter = max(0, $balanceBefore - $data['amount']);
+                                    $amount = -$data['amount'];
+                                    break;
+                                case 'set':
+                                    $balanceAfter = $data['amount'];
+                                    $amount = $balanceAfter - $balanceBefore;
+                                    break;
+                            }
+
+                            $user->balance = $balanceAfter;
+                            $user->save();
+
+                            $user->balanceRecords()->create([
+                                'type' => 'admin',
+                                'amount' => $amount,
+                                'balance_before' => $balanceBefore,
+                                'balance_after' => $balanceAfter,
+                                'description' => $data['description'],
+                                'admin_id' => auth()->id(),
+                            ]);
+                        });
+
                         Notification::make()
                             ->title('余额调整成功')
                             ->success()

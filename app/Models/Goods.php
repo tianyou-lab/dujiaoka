@@ -121,6 +121,31 @@ class Goods extends BaseModel
     }
     
     /**
+     * 批发价兼容：后台通过 wholesale_prices (JSON) 编辑，前台/定价通过 wholesale_price_cnf (字符串) 读取。
+     * 若 wholesale_price_cnf 为空但 wholesale_prices 有数据，自动转换为旧格式字符串。
+     */
+    public function getWholesalePriceCnfAttribute($value)
+    {
+        if (!empty($value)) {
+            return $value;
+        }
+
+        $prices = $this->wholesale_prices;
+        if (empty($prices) || !is_array($prices)) {
+            return $value;
+        }
+
+        $lines = [];
+        foreach ($prices as $item) {
+            if (isset($item['min_quantity']) && isset($item['unit_price'])) {
+                $lines[] = $item['min_quantity'] . '=' . $item['unit_price'];
+            }
+        }
+
+        return implode(PHP_EOL, $lines);
+    }
+
+    /**
      * 获取图片路径
      */
     public function getPictureAttribute($value)

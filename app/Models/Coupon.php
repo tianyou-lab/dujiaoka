@@ -11,6 +11,16 @@ class Coupon extends BaseModel
 
     protected $table = 'coupons';
 
+    protected $casts = [
+        'type' => 'integer',
+        'discount' => 'decimal:2',
+        'limit' => 'integer',
+        'ret' => 'integer',
+        'status' => 'boolean',
+        'start_time' => 'datetime',
+        'end_time' => 'datetime',
+    ];
+
     const TYPE_PERCENT = 1; //系数优惠
     const TYPE_FIXED = 2; //整体固定金额优惠
     const TYPE_EACH = 3; //每件固定金额优惠

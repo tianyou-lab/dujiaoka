@@ -3,6 +3,7 @@
 namespace App\Admin\Pages;
 
 use App\Settings\SystemSettings;
+use App\Services\ConfigService;
 use Filament\Forms;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Grid;
@@ -30,9 +31,14 @@ class ManageSystemSettings extends SettingsPage
     
     protected static ?string $title = '店铺设置';
 
-    public function getTitle(): string 
+    public function getTitle(): string
     {
         return '店铺设置';
+    }
+
+    protected function afterSave(): void
+    {
+        app(ConfigService::class)->refresh();
     }
 
     public function form(Form $form): Form

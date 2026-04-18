@@ -54,7 +54,7 @@ class UserBalanceRecord extends BaseModel
     // 关联管理员
     public function admin(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'admin_id');
+        return $this->belongsTo(AdminUser::class, 'admin_id');
     }
 
     // 关联订单

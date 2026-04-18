@@ -92,11 +92,14 @@ class Cards extends Resource
                 Tables\Columns\TextColumn::make('sub_id')
                     ->label('子商品')
                     ->formatStateUsing(function ($state) {
+                        static $subNameCache = null;
                         if ($state == 0) {
                             return '无子商品';
                         }
-                        $goodsSub = GoodsSub::find($state);
-                        return $goodsSub ? $goodsSub->name : $state;
+                        if ($subNameCache === null) {
+                            $subNameCache = GoodsSub::pluck('name', 'id')->toArray();
+                        }
+                        return $subNameCache[$state] ?? $state;
                     }),
                 
                 Tables\Columns\SelectColumn::make('status')

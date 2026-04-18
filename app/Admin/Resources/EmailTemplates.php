@@ -112,4 +112,24 @@ class EmailTemplates extends Resource
             'edit' => Pages\EditEmailtpl::route('/{record}/edit'),
         ];
     }
+
+    public static function canViewAny(): bool
+    {
+        return auth('admin')->user()?->can('manage_email_templates') || auth('admin')->user()?->hasRole('super-admin') || false;
+    }
+
+    public static function canCreate(): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function canEdit($record): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function canDelete($record): bool
+    {
+        return static::canViewAny();
+    }
 }

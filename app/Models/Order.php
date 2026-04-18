@@ -19,7 +19,8 @@ class Order extends BaseModel
         'user_id',
         'email',
         'total_price',
-        'actual_price', 
+        'actual_price',
+        'paid_price',
         'coupon_discount_price',
         'user_discount_rate',
         'user_discount_amount',
@@ -35,12 +36,14 @@ class Order extends BaseModel
     protected $casts = [
         'total_price' => 'decimal:2',
         'actual_price' => 'decimal:2',
+        'paid_price' => 'decimal:2',
         'coupon_discount_price' => 'decimal:2',
         'user_discount_rate' => 'decimal:2',
         'user_discount_amount' => 'decimal:2',
         'balance_used' => 'decimal:2',
         'payment_method' => 'integer',
         'status' => 'integer',
+        'coupon_returned_at' => 'datetime',
     ];
 
     protected static function boot()
@@ -67,6 +70,13 @@ class Order extends BaseModel
     const PAYMENT_ONLINE = 1;
     const PAYMENT_BALANCE = 2;
     const PAYMENT_MIXED = 3;
+
+    const RECHARGE_GOODS_ID = 0;
+
+    public function isRechargeOrder(): bool
+    {
+        return $this->orderItems()->where('goods_id', self::RECHARGE_GOODS_ID)->exists();
+    }
 
     protected $dispatchesEvents = [
         'updated' => OrderUpdated::class
@@ -119,15 +129,6 @@ class Order extends BaseModel
 
     public function setStatusAttribute($value)
     {
-        if($this->status != self::STATUS_WAIT_PAY || intval($value) != self::STATUS_COMPLETED){
-            $this->attributes['status'] = $value;
-            return;
-        }
-
         $this->attributes['status'] = $value;
-        
-        if($value == self::STATUS_COMPLETED) {
-            app('App\Services\OrderProcess')->completedOrder($this->order_sn, $this->actual_price);
-        }
     }
 }

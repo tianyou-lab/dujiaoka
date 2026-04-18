@@ -7,7 +7,7 @@ use Spatie\LaravelSettings\Settings;
 class SystemSettings extends Settings
 {
     // 订单设置
-    public int $order_expire_time = 1800;
+    public int $order_expire_time = 5; // 单位：分钟
     public bool $is_open_img_code = false;
     public int $order_ip_limits = 3;
     public string $contact_required = 'email';

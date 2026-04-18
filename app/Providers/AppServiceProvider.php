@@ -28,7 +28,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(Cards::class);
         $this->app->singleton(Orders::class);
         $this->app->singleton(Coupons::class);
-        $this->app->singleton(OrderProcess::class);
+        $this->app->bind(OrderProcess::class);
         $this->app->singleton(Email::class);
         $this->app->singleton(Validator::class);
         $this->app->singleton(CacheManager::class);

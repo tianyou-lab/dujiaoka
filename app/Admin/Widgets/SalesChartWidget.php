@@ -49,8 +49,9 @@ class SalesChartWidget extends ChartWidget
             
             $revenue = Order::whereDate('created_at', $date)
                 ->where('status', 4)
-                ->sum('actual_price');
-                
+                ->selectRaw('SUM(paid_price + balance_used) as revenue')
+                ->value('revenue') ?? 0;
+
             $data[] = (float) $revenue;
         }
 
@@ -71,16 +72,17 @@ class SalesChartWidget extends ChartWidget
     {
         $data = [];
         $labels = [];
-        
+
         for ($i = 6; $i >= 0; $i--) {
             $date = Carbon::now()->subWeeks($i)->startOfWeek();
             $endDate = $date->copy()->endOfWeek();
             $labels[] = $date->format('m/d') . '-' . $endDate->format('m/d');
-            
+
             $revenue = Order::whereBetween('created_at', [$date, $endDate])
                 ->where('status', 4)
-                ->sum('actual_price');
-                
+                ->selectRaw('SUM(paid_price + balance_used) as revenue')
+                ->value('revenue') ?? 0;
+
             $data[] = (float) $revenue;
         }
 
@@ -101,14 +103,15 @@ class SalesChartWidget extends ChartWidget
     {
         $data = [];
         $labels = [];
-        
+
         for ($i = 29; $i >= 0; $i--) {
             $date = Carbon::now()->subDays($i);
             $labels[] = $date->format('m/d');
-            
+
             $revenue = Order::whereDate('created_at', $date)
                 ->where('status', 4)
-                ->sum('actual_price');
+                ->selectRaw('SUM(paid_price + balance_used) as revenue')
+                ->value('revenue') ?? 0;
                 
             $data[] = (float) $revenue;
         }

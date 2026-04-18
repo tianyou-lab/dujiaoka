@@ -82,8 +82,7 @@ class Articles extends BaseModel
     
     public function getSummary()
     {
-        //简单地输出摘要
-        $summary = substr($this->content, 0, 200);
-        return strip_tags($summary);
+        $text = strip_tags($this->content);
+        return mb_substr($text, 0, 200, 'UTF-8');
     }
 }

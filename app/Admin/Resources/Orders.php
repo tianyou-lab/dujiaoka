@@ -68,7 +68,7 @@ class Orders extends Resource
                         Forms\Components\Select::make('status')
                             ->label('订单状态')
                             ->options(Order::getStatusMap())
-                            ->required(),
+                            ->disabled(),
                         
                         Forms\Components\TextInput::make('search_pwd')
                             ->label('查询密码')

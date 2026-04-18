@@ -25,8 +25,9 @@ class SalesOverviewWidget extends BaseWidget
             ->count();
         $todayRevenue = Order::whereBetween('created_at', [$todayStart, $todayEnd])
             ->where('status', 4)
-            ->sum('actual_price');
-            
+            ->selectRaw('SUM(paid_price + balance_used) as revenue')
+            ->value('revenue') ?? 0;
+
         // 本周数据
         $weekStart = $now->copy()->startOfWeek();
         $weekEnd = $now->copy()->endOfWeek();
@@ -35,8 +36,9 @@ class SalesOverviewWidget extends BaseWidget
             ->count();
         $weekRevenue = Order::whereBetween('created_at', [$weekStart, $weekEnd])
             ->where('status', 4)
-            ->sum('actual_price');
-            
+            ->selectRaw('SUM(paid_price + balance_used) as revenue')
+            ->value('revenue') ?? 0;
+
         // 本月数据
         $monthStart = $now->copy()->startOfMonth();
         $monthEnd = $now->copy()->endOfMonth();
@@ -45,7 +47,8 @@ class SalesOverviewWidget extends BaseWidget
             ->count();
         $monthRevenue = Order::whereBetween('created_at', [$monthStart, $monthEnd])
             ->where('status', 4)
-            ->sum('actual_price');
+            ->selectRaw('SUM(paid_price + balance_used) as revenue')
+            ->value('revenue') ?? 0;
 
         return [
             Stat::make('今日销售', '¥' . number_format($todayRevenue, 2))
