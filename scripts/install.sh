@@ -825,14 +825,23 @@ finalize_app() {
 
     sudo -u www-data -H php artisan filament:upgrade 2>/dev/null || log_warn "filament:upgrade 跳过"
 
+    # 发布 Livewire 静态资源到 public/，否则 admin 登录页会 404 livewire.min.js
+    sudo -u www-data -H php artisan livewire:publish --assets 2>/dev/null \
+        || sudo -u www-data -H php artisan vendor:publish --tag=livewire:assets --force 2>/dev/null \
+        || log_warn "livewire 资源发布跳过"
+
     if ! sudo -u www-data -H php artisan storage:link 2>/dev/null; then
         local link="$WEB_ROOT/public/storage"
         [ ! -L "$link" ] && ln -s "$WEB_ROOT/storage/app/public" "$link" \
             && chown -h www-data:www-data "$link" && log_info "已手动创建 public/storage 软链"
     fi
 
+    # 清掉旧缓存再 cache，避免 PRC/旧 APP_KEY 残留
+    sudo -u www-data -H php artisan config:clear 2>/dev/null || true
     sudo -u www-data -H php artisan config:cache
+    sudo -u www-data -H php artisan route:clear 2>/dev/null || true
     sudo -u www-data -H php artisan route:cache 2>/dev/null || true
+    sudo -u www-data -H php artisan view:clear 2>/dev/null || true
     sudo -u www-data -H php artisan view:cache 2>/dev/null || true
     log_info "缓存已构建"
 }
