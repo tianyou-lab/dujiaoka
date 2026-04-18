@@ -4,6 +4,12 @@ class Cart {
         this.updateUI();
     }
 
+    static escapeHtml(str) {
+        const div = document.createElement('div');
+        div.appendChild(document.createTextNode(String(str)));
+        return div.innerHTML;
+    }
+
     load() {
         const data = localStorage.getItem('cart');
         return data ? JSON.parse(data) : [];
@@ -117,13 +123,14 @@ class Cart {
     }
 
     renderCartItems(items) {
+        const esc = Cart.escapeHtml;
         const itemsHtml = items.slice(0, 3).map(item => `
             <div class="d-flex align-items-center mb-3">
-                <img src="${item.image || '/assets/common/images/default.jpg'}" 
-                     alt="${item.name}" class="rounded me-3" 
+                <img src="${esc(item.image || '/assets/common/images/default.jpg')}" 
+                     alt="${esc(item.name)}" class="rounded me-3" 
                      style="width: 48px; height: 48px; object-fit: cover;">
                 <div class="flex-grow-1 me-2">
-                    <h6 class="mb-1 fs-sm">${item.name}</h6>
+                    <h6 class="mb-1 fs-sm">${esc(item.name)}</h6>
                     <div class="d-flex align-items-center text-muted small">
                         <span>$${item.price.toFixed(2)}</span>
                         <span class="mx-2">×</span>
@@ -231,7 +238,7 @@ class Cart {
         const alert = document.createElement('div');
         alert.className = `alert ${typeMap[type]} alert-dismissible fade show position-fixed`;
         alert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
-        alert.innerHTML = `${msg}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+        alert.innerHTML = `${Cart.escapeHtml(msg)}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
         
         document.body.appendChild(alert);
         setTimeout(() => alert.remove(), 3000);

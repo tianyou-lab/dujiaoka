@@ -504,13 +504,16 @@ class ToastManager {
     toast.setAttribute('aria-live', 'assertive');
     toast.setAttribute('aria-atomic', 'true');
     
+    const safeMsg = document.createElement('span');
+    safeMsg.textContent = message;
     toast.innerHTML = `
       <div class="d-flex">
         <i class="ci-check-circle fs-base mt-1 me-2"></i>
-        <div class="toast-body me-2">${message}</div>
+        <div class="toast-body me-2"></div>
         <button type="button" class="btn-close ms-auto" data-bs-dismiss="toast"></button>
       </div>
     `;
+    toast.querySelector('.toast-body').appendChild(safeMsg);
 
     container.appendChild(toast);
 

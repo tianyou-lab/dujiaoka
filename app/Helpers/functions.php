@@ -28,8 +28,9 @@ if (! function_exists('replaceMailTemplate')) {
         }
         if ($data) {
             foreach ($data as $key => $val) {
-                $title = str_replace('{' . $key . '}', $val, isset($title) ? $title : $template['tpl_name']);
-                $content = str_replace('{' . $key . '}', $val, isset($content) ? $content : $template['tpl_content']);
+                $safeVal = e((string)$val);
+                $title = str_replace('{' . $key . '}', $safeVal, isset($title) ? $title : $template['tpl_name']);
+                $content = str_replace('{' . $key . '}', $safeVal, isset($content) ? $content : $template['tpl_content']);
             }
             return ['tpl_name' => $title, 'tpl_content' => $content];
         }
@@ -104,7 +105,7 @@ if (! function_exists('formatWholesalePrice')) {
                 $formatData[$key]['price'] = $explodeFormat[1];
             }
         }
-        sort($formatData);
+        usort($formatData, fn($a, $b) => (float)$a['number'] <=> (float)$b['number']);
         return $formatData;
     }
 }
@@ -248,19 +249,25 @@ if (!function_exists('assocUnique')) {
 
 if (!function_exists('getIpCountry')) {
     function getIpCountry($ip) {
-        // 对Cloudflare站点的支持优化
-        if(isset($_SERVER["HTTP_CF_IPCOUNTRY"]))
-            $isoCode = $_SERVER["HTTP_CF_IPCOUNTRY"];
-        else{
-            $reader = new Reader(storage_path('app/library/GeoLite2-Country.mmdb'));
-            try {
-                $isoCode = $reader->country($ip)->country->isoCode;
-            }catch(AddressNotFoundException $e){
-                $isoCode = "";
-            }
+        // 仅在可信代理链下才信任 CF-IPCountry 头，防止伪造
+        $cfCountry = request()->header('CF-IPCountry');
+        if ($cfCountry && app('request')->isFromTrustedProxy()) {
+            return strtoupper($cfCountry);
         }
-        
-        return $isoCode;
+
+        $mmdbPath = storage_path('app/library/GeoLite2-Country.mmdb');
+        if (!file_exists($mmdbPath)) {
+            return '';
+        }
+
+        try {
+            $reader = new Reader($mmdbPath);
+            return $reader->country($ip)->country->isoCode ?? '';
+        } catch (AddressNotFoundException $e) {
+            return '';
+        } catch (\Exception $e) {
+            return '';
+        }
     }
 }
 
@@ -293,9 +300,60 @@ if (!function_exists('asset')) {
      */
     function asset(string $path, ?bool $secure = null): string
     {
-        // 先获取Laravel原生URL
         $url = app('url')->asset($path, $secure);
-        // 应用CDN转换
         return \App\Helpers\CdnHelper::asset($url);
+    }
+}
+
+if (!function_exists('purifyHtml')) {
+    /**
+     * 白名单净化 HTML，只保留安全标签和属性，移除 script/event handler 等。
+     */
+    function purifyHtml(?string $html): string
+    {
+        if (empty($html)) {
+            return '';
+        }
+
+        $allowedTags = '<p><br><b><i><u><strong><em><a><ul><ol><li><h1><h2><h3><h4><h5><h6>'
+            . '<table><thead><tbody><tr><th><td><img><div><span><blockquote><pre><code><hr><sub><sup><dl><dt><dd>';
+
+        $cleaned = strip_tags($html, $allowedTags);
+
+        $cleaned = preg_replace('/\s+on\w+\s*=\s*(["\']).*?\1/is', '', $cleaned);
+        $cleaned = preg_replace('/\s+on\w+\s*=\s*[^\s>]*/is', '', $cleaned);
+
+        $dangerousProtocols = '/\b(href|src|action|formaction|xlink:href|data)\s*=\s*(["\']?)\s*(javascript|data|vbscript)\s*:/is';
+        $cleaned = preg_replace($dangerousProtocols, '$1=$2#', $cleaned);
+
+        $decoded = html_entity_decode($cleaned, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        if (preg_match('/\bon\w+\s*=/i', $decoded) ||
+            preg_match('/\b(href|src|action|formaction)\s*=\s*["\']?\s*(javascript|data|vbscript)\s*:/i', $decoded)) {
+            return e($html);
+        }
+
+        $cleaned = preg_replace('/<(style|object|embed|applet|form|input|textarea|select|button|meta|link|base|iframe|frame|frameset)\b[^>]*>.*?<\/\1>/is', '', $cleaned);
+        $cleaned = preg_replace('/<(style|object|embed|applet|form|input|textarea|select|button|meta|link|base|iframe|frame|frameset)\b[^>]*\/?>/is', '', $cleaned);
+
+        return $cleaned;
+    }
+}
+
+if (!function_exists('safe_url')) {
+    /**
+     * 过滤 URL，只允许 http/https 和相对路径，阻止 javascript:/data: 等危险 scheme。
+     */
+    function safe_url(?string $url): string
+    {
+        if ($url === null || $url === '') {
+            return '#';
+        }
+        $url = trim($url);
+        $decoded = html_entity_decode($url, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $normalized = preg_replace('/[\x00-\x1f\x7f]+/', '', $decoded);
+        if (preg_match('#^\s*(javascript|data|vbscript)\s*:#i', $normalized)) {
+            return '#';
+        }
+        return $url;
     }
 }
