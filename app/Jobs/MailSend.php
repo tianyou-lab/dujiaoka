@@ -5,7 +5,6 @@ namespace App\Jobs;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Mail\MailServiceProvider;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Mail;
@@ -57,28 +56,30 @@ class MailSend implements ShouldQueue
     {
         $body = $this->content;
         $title = $this->title;
-        $sysConfig = cache('system-setting');
-        $mailConfig = [
-            'driver' => $sysConfig['driver'] ?? 'smtp',
-            'host' => $sysConfig['host'] ?? '',
-            'port' => $sysConfig['port'] ?? '465',
-            'username' => $sysConfig['username'] ?? '',
-            'from'      =>  [
-                'address'   =>   $sysConfig['from_address'] ?? '',
-                'name'      =>  $sysConfig['from_name'] ?? '独角发卡'
-            ],
-            'password' => $sysConfig['password'] ?? '',
-            'encryption' => $sysConfig['encryption'] ?? ''
-        ];
         $to = $this->to;
-        //  覆盖 mail 配置
+        $sysConfig = cache('system-setting');
+
+        $mailerName = 'dujiaoka_dynamic';
         config([
-            'mail'  =>  array_merge(config('mail'), $mailConfig)
+            "mail.mailers.{$mailerName}" => [
+                'transport' => $sysConfig['driver'] ?? 'smtp',
+                'host' => $sysConfig['host'] ?? '',
+                'port' => $sysConfig['port'] ?? '465',
+                'username' => $sysConfig['username'] ?? '',
+                'password' => $sysConfig['password'] ?? '',
+                'encryption' => $sysConfig['encryption'] ?? '',
+            ],
         ]);
-        // 重新注册驱动
-        (new MailServiceProvider(app()))->register();
-        Mail::send(['html' => 'email.mail'], ['body' => $body], function ($message) use ($to, $title){
-            $message->to($to)->subject($title);
-        });
+
+        $fromAddress = $sysConfig['from_address'] ?? config('mail.from.address');
+        $fromName = $sysConfig['from_name'] ?? '独角发卡';
+
+        Mail::mailer($mailerName)->send(
+            ['html' => 'email.mail'],
+            ['body' => $body],
+            function ($message) use ($to, $title, $fromAddress, $fromName) {
+                $message->from($fromAddress, $fromName)->to($to)->subject($title);
+            }
+        );
     }
 }

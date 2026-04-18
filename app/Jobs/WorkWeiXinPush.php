@@ -34,22 +34,9 @@ class WorkWeiXinPush implements ShouldQueue
      */
     private $order;
 
-    /**
-     * 商品服务层.
-     * @var \App\Services\Payment
-     */
-    private $goodsService;
-
-
-    /**
-     * Create a new job instance.
-     *
-     * @return void
-     */
     public function __construct(Order $order)
     {
         $this->order = $order;
-        $this->goodsService = app('App\Services\Shop');
     }
 
     /**
@@ -59,24 +46,32 @@ class WorkWeiXinPush implements ShouldQueue
      */
     public function handle()
     {
-        $goodInfo = $this->goodsService->detail($this->order->goods_id);
-        $client = new Client();
-        $apiUrl = 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key='. cfg('qywxbot_key');
-		$params = [
-			"msgtype"=>"markdown",
-			"markdown"=>[
-				"content"=>__('dujiaoka.prompt.new_order_push').'(<font color="warning">'.$this->order->actual_price."</font>元)\n"
-				.'>'.__('order.fields.order_id') .': <font color="comment">'.$this->order->id."</font>\n"
-				.'>'.__('order.fields.order_sn') .': <font color="comment">'.$this->order->order_sn."</font>\n"
-				.'>'.__('order.fields.pay_id') .': <font color="comment">'.$this->order->pay->pay_name."</font>\n"
-				.'>'.__('order.fields.title') .': <font color="comment">'.$this->order->title."</font>\n"
-				.'>'.__('order.fields.actual_price') .': <font color="comment">'.$this->order->actual_price."</font>\n"
-				.'>'.__('order.fields.email') .': <font color="comment">'.$this->order->email."</font>\n"
-				.'>'.__('goods.fields.gd_name') .': <font color="comment">'.$goodInfo->gd_name."</font>\n"
-				.'>'.__('goods.fields.stock') .': <font color="comment">'.$goodInfo->stock."</font>\n"
-				.'>'.__('order.fields.order_created') .': <font color="comment">'.$this->order->created_at."</font>"
-			]
-		];
-        $client->post($apiUrl,['json' => $params, 'verify' => false]);
+        $key = cfg('qywxbot_key');
+        if (empty($key)) {
+            return;
+        }
+
+        $firstItem = $this->order->orderItems->first();
+        $apiUrl = 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=' . $key;
+        $params = [
+            "msgtype" => "markdown",
+            "markdown" => [
+                "content" => __('dujiaoka.prompt.new_order_push').'(<font color="warning">'.$this->order->actual_price."</font>元)\n"
+                    .'>'.__('order.fields.order_id') .': <font color="comment">'.$this->order->id."</font>\n"
+                    .'>'.__('order.fields.order_sn') .': <font color="comment">'.$this->order->order_sn."</font>\n"
+                    .'>'.__('order.fields.pay_id') .': <font color="comment">'.($this->order->pay->pay_name ?? '')."</font>\n"
+                    .'>'.__('order.fields.title') .': <font color="comment">'.($firstItem->goods_name ?? '未知商品')."</font>\n"
+                    .'>'.__('order.fields.actual_price') .': <font color="comment">'.$this->order->actual_price."</font>\n"
+                    .'>'.__('order.fields.email') .': <font color="comment">'.$this->order->email."</font>\n"
+                    .'>'.__('order.fields.order_created') .': <font color="comment">'.$this->order->created_at."</font>"
+            ]
+        ];
+
+        try {
+            $client = new Client(['timeout' => 10, 'verify' => true]);
+            $client->post($apiUrl, ['json' => $params]);
+        } catch (\Throwable $e) {
+            \Log::error('WorkWeiXinPush 发送失败', ['error' => $e->getMessage()]);
+        }
     }
 }

@@ -49,24 +49,26 @@ class ServerJiang implements ShouldQueue
      */
     public function handle()
     {
-        $postdata = http_build_query([
-            'text' => __('dujiaoka.prompt.new_order_push') . ":{$this->order['ord_title']}",
-            'desp' => "
-- ". __('order.fields.title') ."：{$this->order->title}
-- ". __('order.fields.order_sn') ."：{$this->order->order_sn}
-- ". __('order.fields.email') ."：{$this->order->email}
-- ". __('order.fields.actual_price') ."：{$this->order->actual_price}
-            "
-        ]);
-        $opts = [
-            'http' => [
-                'method'  => 'POST',
-                'header'  => 'Content-type: application/x-www-form-urlencoded',
-                'content' => $postdata
-            ]
-        ];
-        $context  = stream_context_create($opts);
         $apiToken = cfg('server_jiang_token');
-        file_get_contents('https://sctapi.ftqq.com/' . $apiToken . '.send', false, $context);
+        if (empty($apiToken)) {
+            return;
+        }
+
+        $postdata = [
+            'text' => __('dujiaoka.prompt.new_order_push') . ":{$this->order->order_sn}",
+            'desp' => "- " . __('order.fields.title') . "：" . ($this->order->orderItems->first()->goods_name ?? '未知商品') . "\n"
+                . "- " . __('order.fields.order_sn') . "：{$this->order->order_sn}\n"
+                . "- " . __('order.fields.email') . "：{$this->order->email}\n"
+                . "- " . __('order.fields.actual_price') . "：{$this->order->actual_price}",
+        ];
+
+        try {
+            $client = new \GuzzleHttp\Client(['timeout' => 10, 'verify' => true]);
+            $client->post('https://sctapi.ftqq.com/' . $apiToken . '.send', [
+                'form_params' => $postdata,
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('ServerJiang 推送失败', ['error' => $e->getMessage()]);
+        }
     }
 }

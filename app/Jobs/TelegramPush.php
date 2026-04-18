@@ -34,22 +34,9 @@ class TelegramPush implements ShouldQueue
      */
     private $order;
 
-    /**
-     * 商品服务层.
-     * @var \App\Services\Payment
-     */
-    private $goodsService;
-
-
-    /**
-     * Create a new job instance.
-     *
-     * @return void
-     */
     public function __construct(Order $order)
     {
         $this->order = $order;
-        $this->goodsService = app('App\Services\Shop');
     }
 
     /**
@@ -59,23 +46,30 @@ class TelegramPush implements ShouldQueue
      */
     public function handle()
     {
-        $goodInfo = $this->goodsService->detail($this->order->goods_id);
-        $formatText = '*'. __('dujiaoka.prompt.new_order_push').'('.$this->order->actual_price.'元)*%0A'
-        . __('order.fields.order_id') .': `'.$this->order->id.'`%0A'
-        . __('order.fields.order_sn') .': `'.$this->order->order_sn.'`%0A'
-        . __('order.fields.pay_id') .': `'.$this->order->pay->pay_name.'`%0A'
-        . __('order.fields.title') .': '.$this->order->title.'%0A'
-        . __('order.fields.actual_price') .': '.$this->order->actual_price.'%0A'
-        . __('order.fields.email') .': `'.$this->order->email.'`%0A'
-        . __('goods.fields.gd_name') .': `'.$goodInfo->gd_name.'`%0A'
-        . __('goods.fields.stock') .': `'.$goodInfo->stock.'`%0A'
+        $firstItem = $this->order->orderItems->first();
+        $formatText = '*'. __('dujiaoka.prompt.new_order_push').'('.$this->order->actual_price.'元)*' . "\n"
+        . __('order.fields.order_id') .': `'.$this->order->id.'`' . "\n"
+        . __('order.fields.order_sn') .': `'.$this->order->order_sn.'`' . "\n"
+        . __('order.fields.pay_id') .': `'.($this->order->pay->pay_name ?? '').'`' . "\n"
+        . __('order.fields.title') .': '.($firstItem->goods_name ?? '未知商品') . "\n"
+        . __('order.fields.actual_price') .': '.$this->order->actual_price . "\n"
+        . __('order.fields.email') .': `'.$this->order->email.'`' . "\n"
         . __('order.fields.order_created') .': '.$this->order->created_at;
         $client = new Client([
             'timeout' => 30,
             'proxy'=> ''
         ]);
-        $apiUrl = 'https://api.telegram.org/bot' . cfg('telegram_bot_token') .
-            '/sendMessage?chat_id=' . cfg('telegram_userid') . '&parse_mode=Markdown&text='.$formatText;
-        $client->post($apiUrl);
+        $apiUrl = 'https://api.telegram.org/bot' . cfg('telegram_bot_token') . '/sendMessage';
+        try {
+            $client->post($apiUrl, [
+                'json' => [
+                    'chat_id' => cfg('telegram_userid'),
+                    'parse_mode' => 'Markdown',
+                    'text' => $formatText,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('TelegramPush 发送失败', ['error' => $e->getMessage()]);
+        }
     }
 }

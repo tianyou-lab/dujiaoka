@@ -46,9 +46,16 @@ class CouponBack implements ShouldQueue
      */
     public function handle()
     {
-        // 如果订单有使用优惠码
-        if ($this->order->coupon_id) {
-            // 优惠码次数+1
+        if (!$this->order->coupon_id) {
+            return;
+        }
+
+        $affected = Order::where('id', $this->order->id)
+            ->where('coupon_id', '>', 0)
+            ->whereNull('coupon_returned_at')
+            ->update(['coupon_returned_at' => now()]);
+
+        if ($affected > 0) {
             app('App\Services\Coupons')->retIncrByID($this->order->coupon_id);
         }
     }
