@@ -736,6 +736,11 @@ write_env_file() {
             echo "${k}=${v}" >> .env
         fi
     }
+    # 必须保证 APP_KEY 这一行存在，否则 artisan key:generate 会报
+    # "No APP_KEY variable was found in the .env file."
+    if ! grep -qE '^\s*APP_KEY\s*=' .env; then
+        echo "APP_KEY=" >> .env
+    fi
     set_env "APP_URL"      "https://${DOMAIN}"
     set_env "APP_TIMEZONE" "Asia/Shanghai"
     set_env "DB_HOST"      "127.0.0.1"
