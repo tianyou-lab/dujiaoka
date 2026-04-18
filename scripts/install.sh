@@ -628,37 +628,91 @@ configure_database() {
     log_info "数据库 ${DB_NAME} / 用户 ${DB_USER} 已就绪"
 }
 
+_clone_fast() {
+    # 依次试：直连 github → ghproxy.com → ghps.cc → tarball via codeload
+    # 都用 --depth=1 极大压缩流量
+    local target="$1"
+    local repo_path="tianyou-lab/dujiaoka"
+    local urls=(
+        "https://github.com/${repo_path}.git"
+        "https://gh-proxy.com/https://github.com/${repo_path}.git"
+        "https://ghps.cc/https://github.com/${repo_path}.git"
+        "https://hub.fastgit.xyz/${repo_path}.git"
+    )
+
+    for url in "${urls[@]}"; do
+        log_info "尝试克隆: $url"
+        # 用 timeout 90s + depth=1，慢的源直接放弃
+        if timeout 90 git clone --depth=1 "$url" "$target" 2>&1; then
+            return 0
+        fi
+        log_warn "失败/超时，换下一个源"
+        rm -rf "$target"
+    done
+
+    # 所有 git 源都失败 → 兜底走 tarball
+    log_warn "所有 git 源失败，尝试 tarball 下载..."
+    local tar_urls=(
+        "https://github.com/${repo_path}/archive/refs/heads/main.tar.gz"
+        "https://gh-proxy.com/https://github.com/${repo_path}/archive/refs/heads/main.tar.gz"
+        "https://codeload.github.com/${repo_path}/tar.gz/refs/heads/main"
+    )
+    for tu in "${tar_urls[@]}"; do
+        log_info "尝试 tarball: $tu"
+        if timeout 120 curl -fsSL "$tu" -o /tmp/dujiaoka.tar.gz; then
+            mkdir -p "$target"
+            tar -xzf /tmp/dujiaoka.tar.gz -C "$target" --strip-components=1
+            rm -f /tmp/dujiaoka.tar.gz
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 install_source() {
     log_step "下载源代码"
 
     if [ -d "$WEB_ROOT/.git" ]; then
         log_info "检测到已有 git 仓库，执行 git pull"
         cd "$WEB_ROOT" && git pull --ff-only || log_warn "pull 失败，继续使用现有代码"
-    elif [ -d "$WEB_ROOT" ] && [ "$(ls -A $WEB_ROOT 2>/dev/null)" ]; then
-        log_warn "目录 $WEB_ROOT 已存在且非空但非 git 仓库"
-        read -rp "是否清空并重新 clone? (y/n) [n]: " OV
-        OV=${OV:-n}
-        if [[ "$OV" =~ ^[Yy]$ ]]; then
-            rm -rf "$WEB_ROOT"
-            git clone "$REPO_URL" "$WEB_ROOT"
+    elif [ -d "$WEB_ROOT" ] && [ -n "$(ls -A "$WEB_ROOT" 2>/dev/null)" ]; then
+        if [ -f "$WEB_ROOT/composer.json" ] && [ -d "$WEB_ROOT/app" ]; then
+            log_info "目录已包含项目代码（无 .git），跳过下载"
+        else
+            log_warn "目录 $WEB_ROOT 已存在且非空但非项目代码"
+            read -rp "是否清空并重新克隆? (y/n) [n]: " OV
+            OV=${OV:-n}
+            if [[ "$OV" =~ ^[Yy]$ ]]; then
+                rm -rf "$WEB_ROOT"
+                _clone_fast "$WEB_ROOT" || { log_error "源代码下载失败，请手动 clone 后重试"; exit 1; }
+            fi
         fi
     else
         mkdir -p "$(dirname "$WEB_ROOT")"
-        git clone "$REPO_URL" "$WEB_ROOT"
+        _clone_fast "$WEB_ROOT" || { log_error "源代码下载失败，请手动 clone 后重试"; exit 1; }
     fi
 
     chown -R www-data:www-data "$WEB_ROOT"
     find "$WEB_ROOT" -type d -exec chmod 755 {} \;
     find "$WEB_ROOT" -type f -exec chmod 644 {} \;
     chmod -R 775 "$WEB_ROOT/storage" "$WEB_ROOT/bootstrap/cache"
-    chmod +x "$WEB_ROOT/artisan"
+    [ -f "$WEB_ROOT/artisan" ] && chmod +x "$WEB_ROOT/artisan"
     log_info "源代码就绪"
 }
 
 install_app_dependencies() {
     log_step "composer install"
     cd "$WEB_ROOT"
-    sudo -u www-data -H composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
+
+    # 国内服务器走阿里云 composer 镜像加速（仅本项目级配置，不污染全局）
+    sudo -u www-data -H composer config -d "$WEB_ROOT" repo.packagist composer https://mirrors.aliyun.com/composer/ 2>/dev/null || true
+
+    if ! sudo -u www-data -H composer install --no-dev --optimize-autoloader --no-interaction --no-scripts; then
+        log_warn "composer install 失败，尝试切回官方源重试..."
+        sudo -u www-data -H composer config -d "$WEB_ROOT" --unset repo.packagist 2>/dev/null || true
+        sudo -u www-data -H composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
+    fi
     log_info "Composer 依赖已安装"
 }
 
