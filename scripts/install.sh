@@ -548,7 +548,11 @@ get_user_input() {
     log_info "配置确认:  域名=${DOMAIN}  数据库=${DB_NAME}/${DB_USER}  SSL=${APPLY_SSL}"
     read -rp "以上信息是否正确? (y/n) [y]: " OK
     OK=${OK:-y}
-    [[ ! "$OK" =~ ^[Yy]$ ]] && { log_info "已取消"; exit 0; }
+    if [[ ! "$OK" =~ ^[Yy]$ ]]; then
+        log_info "已取消"
+        exit 0
+    fi
+    return 0
 }
 
 start_services() {
