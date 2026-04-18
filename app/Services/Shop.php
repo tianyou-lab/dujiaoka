@@ -15,12 +15,53 @@ class Shop
      */
     public function withGroup(): ?array
     {
-        $goods = GoodsGroup::query()
+        $groups = GoodsGroup::query()
             ->with(['goods' => fn($query) => $query->with('goods_sub')->where('is_open', Goods::STATUS_OPEN)->orderBy('ord', 'ASC')])
             ->where('is_open', GoodsGroup::STATUS_OPEN)
             ->orderBy('ord', 'ASC')
             ->get();
-        return $goods?->toArray();
+
+        $result = $groups?->toArray();
+        if (!$result) {
+            return $result;
+        }
+
+        $allSubIds = [];
+        foreach ($result as $group) {
+            foreach ($group['goods'] as $g) {
+                if ((int)$g['type'] === Goods::AUTOMATIC_DELIVERY) {
+                    foreach ($g['goods_sub'] as $sub) {
+                        $allSubIds[] = $sub['id'];
+                    }
+                }
+            }
+        }
+
+        $autoStocks = [];
+        if (!empty($allSubIds)) {
+            $autoStocks = Carmis::whereIn('sub_id', $allSubIds)
+                ->where('status', Carmis::STATUS_UNSOLD)
+                ->selectRaw('sub_id, count(*) as cnt')
+                ->groupBy('sub_id')
+                ->pluck('cnt', 'sub_id')
+                ->toArray();
+        }
+
+        foreach ($result as &$group) {
+            foreach ($group['goods'] as &$g) {
+                if ((int)$g['type'] === Goods::AUTOMATIC_DELIVERY) {
+                    $total = 0;
+                    foreach ($g['goods_sub'] as $sub) {
+                        $total += $autoStocks[$sub['id']] ?? 0;
+                    }
+                    $g['_auto_stock'] = $total;
+                }
+            }
+            unset($g);
+        }
+        unset($group);
+
+        return $result;
     }
 
     /**
@@ -76,7 +117,10 @@ class Shop
      */
     public function inStockDecr(int $subId, int $number = 1): bool
     {
-        return \App\Models\GoodsSub::where('id', $subId)->decrement('stock', $number);
+        $affected = \App\Models\GoodsSub::where('id', $subId)
+            ->where('stock', '>=', $number)
+            ->decrement('stock', $number);
+        return $affected > 0;
     }
 
     /**

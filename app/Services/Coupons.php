@@ -37,7 +37,8 @@ class Coupons
     public function retDecr(string $coupon)
     {
         return Coupon::query()
-            ->where('coupon',  $coupon)
+            ->where('coupon', $coupon)
+            ->where('ret', '>', 0)
             ->decrement('ret', 1);
     }
 

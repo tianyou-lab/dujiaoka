@@ -86,6 +86,22 @@ class HomeController extends BaseController
                 $goods->open_coupon = 1;
             }
             $formatGoods = $this->goodsService->format($goods);
+
+            $subStocks = [];
+            if ($goods->type == \App\Models\Goods::AUTOMATIC_DELIVERY) {
+                $subIds = $goods->goods_sub->pluck('id')->toArray();
+                if (!empty($subIds)) {
+                    $subStocks = \App\Models\Carmis::where('goods_id', $goods->id)
+                        ->whereIn('sub_id', $subIds)
+                        ->where('status', \App\Models\Carmis::STATUS_UNSOLD)
+                        ->selectRaw('sub_id, count(*) as cnt')
+                        ->groupBy('sub_id')
+                        ->pluck('cnt', 'sub_id')
+                        ->toArray();
+                }
+            }
+            $formatGoods->sub_stocks = $subStocks;
+
             // 加载支付方式.
             $client = \App\Models\Pay::CLIENT_PC;
             if (app('Jenssegers\Agent')->isMobile()) {
@@ -115,7 +131,7 @@ class HomeController extends BaseController
     public function geetest(Request $request)
     {
         $data = [
-            'user_id' => @Auth::user()?@Auth::user()->id:'UnLoginUser',
+            'user_id' => Auth::id() ?? 'UnLoginUser',
             'client_type' => 'web',
             'ip_address' => \Illuminate\Support\Facades\Request::ip()
         ];

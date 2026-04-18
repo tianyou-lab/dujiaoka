@@ -26,7 +26,7 @@ class Email
 
     public function getTemplate(string $token): Emailtpl
     {
-        return cache()->remember("email_{$token}", 86400, function () use ($token) {
+        return cache()->remember("email_template_{$token}", 86400, function () use ($token) {
             $dbTemplate = Emailtpl::where('tpl_token', $token)->first();
             
             if (isset(self::$templates[$token])) {
@@ -69,14 +69,26 @@ class Email
     public function getEmail(string $token, Order $order): array
     {
         $template = $this->getTemplate($token);
-        
+
         if (!$template) {
             throw new \Exception("模板 {$token} 不存在");
         }
-        
+
         return [
             'title' => $this->parse($template->tpl_name, $order),
             'content' => $this->parse($template->tpl_content, $order),
         ];
+    }
+
+    /**
+     * 按 token 返回模板原始对象，供 replaceMailTemplate() 使用
+     */
+    public function detailByToken(string $token): Emailtpl
+    {
+        $tpl = $this->getTemplate($token);
+        if (!$tpl) {
+            throw new \Exception("邮件模板 {$token} 不存在");
+        }
+        return $tpl;
     }
 }

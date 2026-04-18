@@ -8,7 +8,9 @@ use App\Http\Controllers\BaseController;
 class ArticleController extends BaseController {
     
     public function listAll(){
-        $articles = Articles::select('title', 'link', 'category', 'content', 'updated_at')
+        $articles = Articles::selectRaw('id, title, link, category, SUBSTRING(content, 1, 300) as content, updated_at')
+        ->where('is_open', 1)
+        ->orderBy('sort', 'desc')
         ->get()
         ->map(function ($article) {
             $article->summary = $article->getSummary();
@@ -24,11 +26,13 @@ class ArticleController extends BaseController {
     }
     
     public function show($link) {
-        
-        // 根据 $link 查询文章内容
+        if (!preg_match('/^[a-zA-Z0-9_\-]{1,128}$/', $link)) {
+            abort(404);
+        }
+
         $article = Articles::with(['goods' => function($query) {
             $query->where('is_open', true)->select('goods.id', 'goods.gd_name', 'goods.gd_description', 'goods.picture');
-        }])->where('link', $link)->first();
+        }])->where('link', $link)->where('is_open', 1)->first();
 
         if (!$article) {
             abort(404);

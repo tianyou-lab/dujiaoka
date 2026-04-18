@@ -26,6 +26,8 @@ class Cards
             ->where('goods_id', $goodsID)
             ->where('sub_id', $sub_id)
             ->where('status', Carmis::STATUS_UNSOLD)
+            ->orderBy('id')
+            ->lockForUpdate()
             ->take($byAmount)
             ->get();
         return $carmis ? $carmis->toArray() : null;

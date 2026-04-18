@@ -84,7 +84,8 @@ class Installer
             DB::connection('test')->select('SELECT 1');
             return true;
         } catch (Exception $e) {
-            return ['error' => $e->getMessage()];
+            \Log::error('数据库连接测试失败', ['error' => $e->getMessage()]);
+            return ['error' => '无法连接数据库，请检查主机、端口、用户名和密码是否正确'];
         }
     }
 
@@ -203,7 +204,14 @@ class Installer
 
             // 执行数据库及初始化
             $installSql = file_get_contents(database_path('sql/install.sql'));
-            DB::unprepared($installSql);
+            DB::beginTransaction();
+            try {
+                DB::unprepared($installSql);
+                DB::commit();
+            } catch (Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
             self::publishAssets();        
             file_put_contents(base_path('install.lock'), 'install ok');
 

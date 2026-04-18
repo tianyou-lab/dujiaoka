@@ -6,8 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\UserBalanceRecord;
 use App\Models\Order;
+use App\Models\Pay;
+use App\Jobs\OrderExpired;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules;
 
@@ -94,25 +98,32 @@ class UserCenterController extends Controller
         ]);
 
         $user = Auth::guard('web')->user();
-        $user->update([
+        $user->forceFill([
             'password' => Hash::make($request->password),
-        ]);
+            'remember_token' => \Illuminate\Support\Str::random(60),
+        ])->save();
+
+        $request->session()->regenerate();
 
         return back()->with('success', '密码修改成功！');
     }
 
     public function orders(Request $request)
     {
+        $request->validate([
+            'status' => 'nullable|integer|in:' . implode(',', array_keys(Order::getStatusMap())),
+            'date_from' => 'nullable|date|before_or_equal:date_to',
+            'date_to' => 'nullable|date|after_or_equal:date_from',
+        ]);
+
         $user = Auth::guard('web')->user();
         
         $query = $user->orders()->with(['orderItems', 'pay']);
 
-        // 状态筛选
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
+            $query->where('status', (int) $request->status);
         }
 
-        // 日期筛选
         if ($request->filled('date_from')) {
             $query->whereDate('created_at', '>=', $request->date_from);
         }
@@ -168,35 +179,54 @@ class UserCenterController extends Controller
             'pay_id' => ['required', 'exists:pays,id'],
         ]);
 
-        $user = Auth::guard('web')->user();
-        
-        // 创建充值订单
-        $order = Order::create([
-            'order_sn' => strtoupper(\Illuminate\Support\Str::random(16)),
-            'user_id' => $user->id,
-            'email' => $user->email,
-            'total_price' => $request->amount,
-            'actual_price' => $request->amount,
-            'coupon_discount_price' => 0,
-            'user_discount_rate' => 1.00,
-            'user_discount_amount' => 0,
-            'payment_method' => Order::PAYMENT_ONLINE,
-            'balance_used' => 0,
-            'status' => Order::STATUS_WAIT_PAY,
-            'pay_id' => $request->pay_id,
-            'buy_ip' => $request->ip(),
-        ]);
+        $ipLimit = (int) cfg('order_ip_limits', 0);
+        if ($ipLimit > 0) {
+            $pendingCount = Order::where('buy_ip', $request->getClientIp())
+                ->where('status', Order::STATUS_WAIT_PAY)
+                ->count();
+            if ($pendingCount >= $ipLimit) {
+                return back()->withErrors(['amount' => __('dujiaoka.prompt.order_ip_limits')])->withInput();
+            }
+        }
 
-        // 创建订单项
-        $order->orderItems()->create([
-            'goods_id' => 0,
-            'goods_name' => '余额充值',
-            'goods_price' => $request->amount,
-            'quantity' => 1,
-            'total_price' => $request->amount,
-            'type' => 0, // 特殊类型表示充值
-            'info' => '用户余额充值'
-        ]);
+        if (!Pay::where('id', $request->pay_id)->where('enable', 1)->exists()) {
+            return back()->withErrors(['pay_id' => '所选支付方式不可用'])->withInput();
+        }
+
+        $user = Auth::guard('web')->user();
+
+        $order = DB::transaction(function () use ($request, $user) {
+            $order = Order::create([
+                'order_sn' => strtoupper(\Illuminate\Support\Str::random(16)),
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'total_price' => $request->amount,
+                'actual_price' => $request->amount,
+                'coupon_discount_price' => 0,
+                'user_discount_rate' => 1.00,
+                'user_discount_amount' => 0,
+                'payment_method' => Order::PAYMENT_ONLINE,
+                'balance_used' => 0,
+                'status' => Order::STATUS_WAIT_PAY,
+                'pay_id' => $request->pay_id,
+                'buy_ip' => $request->ip(),
+            ]);
+
+            $order->orderItems()->create([
+                'goods_id'   => Order::RECHARGE_GOODS_ID,
+                'goods_name' => '余额充值',
+                'unit_price' => $request->amount,
+                'quantity'   => 1,
+                'subtotal'   => $request->amount,
+                'type'       => 0,
+                'info'       => '用户余额充值',
+            ]);
+
+            return $order;
+        });
+
+        $expiredMinutes = cfg('order_expire_time', 5);
+        OrderExpired::dispatch($order->order_sn)->delay(Carbon::now()->addMinutes($expiredMinutes));
 
         return redirect()->route('pay.checkout', $order->order_sn);
     }
@@ -205,7 +235,7 @@ class UserCenterController extends Controller
     {
         $user = Auth::guard('web')->user();
         $allLevels = \App\Models\UserLevel::getActiveLevels();
-        
+
         return view('themes.morpho.views.user.level-info', compact('user', 'allLevels'));
     }
 }

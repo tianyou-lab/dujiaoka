@@ -18,8 +18,12 @@ class CartController extends BaseController
 
     public function validateItem(Request $request)
     {
-        $params = $request->only(['goods_id', 'sub_id', 'quantity']);
-        $qty = (int) ($params['quantity'] ?? 1);
+        $params = $request->validate([
+            'goods_id' => 'required|integer|min:1',
+            'sub_id' => 'required|integer|min:1',
+            'quantity' => 'required|integer|min:1',
+        ]);
+        $qty = (int) $params['quantity'];
 
         $goods = cache()->remember("goods_with_sub_{$params['goods_id']}", 21600, function () use ($params) {
             return Goods::with('goods_sub')->find($params['goods_id']);
@@ -35,7 +39,7 @@ class CartController extends BaseController
         }
 
         $stock = $goods->type == Goods::AUTOMATIC_DELIVERY 
-            ? Carmis::where('sub_id', $params['sub_id'])->where('status', 1)->count()
+            ? Carmis::where('goods_id', $params['goods_id'])->where('sub_id', $params['sub_id'])->where('status', 1)->count()
             : $sub->stock;
 
         if ($qty > $stock) {
@@ -44,6 +48,10 @@ class CartController extends BaseController
 
         if ($goods->buy_limit_num > 0 && $qty > $goods->buy_limit_num) {
             return $this->fail("超出限购数量：{$goods->buy_limit_num}");
+        }
+
+        if ($goods->buy_min_num > 0 && $qty < $goods->buy_min_num) {
+            return $this->fail("最低购买数量：{$goods->buy_min_num}");
         }
 
         $enabledPays = cache()->remember('enabled_pay_methods', 43200, function () {
@@ -61,6 +69,7 @@ class CartController extends BaseController
             'image' => pictureUrl($goods->picture),
             'stock' => $stock,
             'max_quantity' => min($stock, $goods->buy_limit_num ?: $stock),
+            'min_quantity' => $goods->buy_min_num ?: 1,
             'payways' => $payways
         ]);
     }

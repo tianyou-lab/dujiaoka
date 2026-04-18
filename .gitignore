@@ -5,8 +5,15 @@ public/vendor/dcat-admin-extensions
 /storage/*.key
 /vendor
 /dcat-admin-extensions
+/node_modules
 install.lock
 .env
 .user.ini
 .htaccess
 .DS_Store
+.cursor/
+.claude/
+.idea/
+.vscode/
+*.swp
+*.swo

@@ -26,6 +26,8 @@ class DujiaoBoot
         // 语言检测
         try {
             $lang = cfg('language', 'zh_CN');
+            // 兼容旧格式 zh-CN → zh_CN
+            $lang = str_replace('-', '_', $lang);
             app()->setLocale($lang);
         } catch (\Exception $e) {
             app()->setLocale('zh_CN');

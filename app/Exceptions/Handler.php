@@ -44,6 +44,14 @@ class Handler extends ExceptionHandler {
 			$tplPath = $layout . '/errors/error';
 			return view($tplPath, ['title' => __('dujiaoka.error_title'), 'content' => $exception->getMessage(), 'url' => ""]);
 		}
+
+		if ($request->expectsJson() && !config('app.debug')) {
+			$status = method_exists($exception, 'getStatusCode')
+				? $exception->getStatusCode()
+				: 500;
+			return response()->json(['message' => __('dujiaoka.prompt.system_error')], $status);
+		}
+
 		return parent::render($request, $exception);
 	}
 }

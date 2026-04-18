@@ -22,20 +22,24 @@ Route::middleware('dujiaoka.boot')->namespace('Home')->group(function () {
     Route::get('/cart', 'CartController@index');
     
     // API路由
-    Route::prefix('api')->group(function () {
+    Route::prefix('api')->middleware('throttle:60,1')->group(function () {
         Route::post('cart/validate', 'CartController@validateItem');
     });
     
     // 订单相关
     Route::prefix('order')->controller('OrderController')->group(function () {
-        Route::post('create', 'createOrder');
-        Route::get('bill/{orderSN}', 'bill');
-        Route::get('detail/{orderSN}', 'detailOrderSN');
+        Route::post('create', 'createOrder')->middleware('throttle:15,1');
+        Route::middleware('throttle:30,1')->group(function () {
+            Route::get('bill/{orderSN}', 'bill');
+            Route::get('detail/{orderSN}', 'detailOrderSN');
+            Route::get('status/{orderSN}', 'checkOrderStatus');
+        });
         Route::get('search', 'orderSearch');
-        Route::get('status/{orderSN}', 'checkOrderStatus');
-        Route::post('search/sn', 'searchOrderBySN');
-        Route::post('search/email', 'searchOrderByEmail');
-        Route::post('search/browser', 'searchOrderByBrowser');
+        Route::middleware('throttle:10,1')->group(function () {
+            Route::post('search/sn', 'searchOrderBySN');
+            Route::post('search/email', 'searchOrderByEmail');
+            Route::post('search/browser', 'searchOrderByBrowser');
+        });
     });
     
     // 支付相关
@@ -51,7 +55,7 @@ Route::middleware('dujiaoka.boot')->namespace('Home')->group(function () {
 });
 
 // 用户认证路由
-Route::middleware('dujiaoka.boot')->namespace('Auth')->prefix('auth')->group(function () {
+Route::middleware(['dujiaoka.boot', 'throttle:10,1'])->namespace('Auth')->prefix('auth')->group(function () {
     Route::get('login', 'AuthController@showLogin')->name('login');
     Route::post('login', 'AuthController@login');
     Route::get('register', 'AuthController@showRegister')->name('register');
@@ -61,10 +65,17 @@ Route::middleware('dujiaoka.boot')->namespace('Auth')->prefix('auth')->group(fun
     Route::get('reset-password/{token}', 'AuthController@showResetPassword')->name('password.reset');
     Route::post('reset-password', 'AuthController@resetPassword')->name('password.update');
     Route::post('logout', 'AuthController@logout')->name('logout');
-    Route::post('email/verify', 'AuthController@verifyEmail')->name('verification.send');
-    Route::get('email/verify/{id}/{hash}', 'AuthController@verify')->name('verification.verify');
+});
+
+// 邮箱验证路由：需要登录 + 限流
+Route::middleware(['dujiaoka.boot', 'auth:web', 'throttle:6,1'])->namespace('Auth')->prefix('auth')->group(function () {
     Route::get('email/verify', 'AuthController@showVerifyNotice')->name('verification.notice');
     Route::post('email/resend', 'AuthController@resendVerification')->name('verification.resend');
+});
+
+// 邮箱验证点击链接：需要登录 + signed 签名校验
+Route::middleware(['dujiaoka.boot', 'auth:web', 'signed', 'throttle:6,1'])->namespace('Auth')->prefix('auth')->group(function () {
+    Route::get('email/verify/{id}/{hash}', 'AuthController@verify')->name('verification.verify');
 });
 
 // 用户中心路由
@@ -77,9 +88,13 @@ Route::middleware(['dujiaoka.boot', 'auth:web'])->namespace('User')->prefix('use
     Route::get('orders', 'UserCenterController@orders')->name('user.orders');
     Route::get('orders/{orderSn}', 'UserCenterController@orderDetail')->name('user.order.detail');
     Route::get('balance', 'UserCenterController@balance')->name('user.balance');
-    Route::get('recharge', 'UserCenterController@recharge')->name('user.recharge');
-    Route::post('recharge', 'UserCenterController@processRecharge');
     Route::get('level', 'UserCenterController@levelInfo')->name('user.level');
+
+    // 充值操作需要邮箱验证
+    Route::middleware('verified')->group(function () {
+        Route::get('recharge', 'UserCenterController@recharge')->name('user.recharge');
+        Route::post('recharge', 'UserCenterController@processRecharge');
+    });
 });
 
 // 安装路由

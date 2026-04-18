@@ -94,11 +94,12 @@ class Validator
     public function validatePurchaseLimit(Goods $goods, string $email, int $quantity): void
     {
         if ($goods->buy_limit_num > 0) {
-            $count = Order::where('goods_id', $goods->id)
-                ->where('email', $email)
-                ->whereIn('status', [Order::STATUS_COMPLETED, Order::STATUS_PROCESSING, Order::STATUS_PENDING])
-                ->sum('buy_amount');
-                
+            $count = \App\Models\OrderItem::join('orders', 'order_items.order_id', '=', 'orders.id')
+                ->where('orders.email', $email)
+                ->where('order_items.goods_id', $goods->id)
+                ->whereIn('orders.status', [Order::STATUS_WAIT_PAY, Order::STATUS_COMPLETED, Order::STATUS_PROCESSING, Order::STATUS_PENDING])
+                ->sum('order_items.quantity');
+
             if (($count + $quantity) > $goods->buy_limit_num) {
                 throw new RuleValidationException(__('dujiaoka.prompt.purchase_limit_exceeded'));
             }
