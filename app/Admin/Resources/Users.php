@@ -125,14 +125,21 @@ class Users extends Resource
                         'success' => '钻石用户',
                     ]),
 
-                BadgeColumn::make('group.name')
+                TextColumn::make('group.name')
                     ->label('分组')
+                    ->badge()
                     ->default('未分组')
-                    ->color(fn ($record) => $record?->group?->color ? null : 'gray')
                     ->formatStateUsing(fn ($state) => $state ?: '未分组')
-                    ->extraAttributes(fn ($record) => $record?->group?->color
-                        ? ['style' => 'background-color: ' . $record->group->color . '20; color: ' . $record->group->color . '; border: 1px solid ' . $record->group->color . '40;']
-                        : []),
+                    ->color(fn ($record) => $record?->group?->color ? 'gray' : 'gray')
+                    ->extraAttributes(function ($record) {
+                        $color = $record?->group?->color;
+                        if (! $color) {
+                            return [];
+                        }
+                        return [
+                            'style' => 'background-color: ' . $color . '20; color: ' . $color . '; border: 1px solid ' . $color . '40;',
+                        ];
+                    }),
                 
                 TextColumn::make('balance')
                     ->label('余额')
@@ -175,9 +182,7 @@ class Users extends Resource
                 SelectFilter::make('group_id')
                     ->label('用户分组')
                     ->options(UserGroup::getActiveGroups()->pluck('name', 'id'))
-                    ->placeholder('全部')
-                    ->trueLabel('已分组')
-                    ->indicator('分组'),
+                    ->placeholder('全部'),
 
                 SelectFilter::make('status')
                     ->label('状态')
@@ -287,13 +292,12 @@ class Users extends Resource
                             ->options(
                                 UserGroup::getActiveGroups()
                                     ->pluck('name', 'id')
-                                    ->prepend('未分组（清除分组）', '')
+                                    ->toArray()
                             )
-                            ->required()
-                            ->placeholder('请选择'),
+                            ->placeholder('未分组（留空则清除分组）'),
                     ])
                     ->action(function (Collection $records, array $data) {
-                        $groupId = $data['group_id'] === '' ? null : (int) $data['group_id'];
+                        $groupId = empty($data['group_id']) ? null : (int) $data['group_id'];
                         $records->each(fn ($u) => $u->update(['group_id' => $groupId]));
                         $name = $groupId
                             ? (UserGroup::find($groupId)?->name ?? '未知')
