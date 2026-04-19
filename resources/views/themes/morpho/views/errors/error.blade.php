@@ -44,7 +44,7 @@
         </svg>
       </div>
       <h1>{{ $title }}</h1>
-      <p class="pb-3">{{ $content }}</p>
+      <p class="pb-3 text-break text-start mx-auto" style="white-space: pre-wrap; word-break: break-word; max-width: 560px;">{{ $content }}</p>
       @if(!$url)
                                             
       <a href="javascript:history.back(-1);"  class="btn btn-lg btn-dark">{{ __('dujiaoka.callback') }}</a>                                      
