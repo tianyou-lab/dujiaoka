@@ -557,6 +557,8 @@ class OrderProcess
                 if ($orderItem->goods && $orderItem->goods->type === Goods::AUTOMATIC_DELIVERY) {
                     GoodsSub::where('id', $orderItem->sub_id)
                         ->increment('sales_volume', $orderItem->quantity);
+                    Goods::where('id', $orderItem->goods_id)
+                        ->increment('sales_volume', $orderItem->quantity);
                     continue;
                 }
                 $affected = GoodsSub::where('id', $orderItem->sub_id)
@@ -572,6 +574,8 @@ class OrderProcess
                     return;
                 }
                 GoodsSub::where('id', $orderItem->sub_id)
+                    ->increment('sales_volume', $orderItem->quantity);
+                Goods::where('id', $orderItem->goods_id)
                     ->increment('sales_volume', $orderItem->quantity);
             }
         }
@@ -676,6 +680,15 @@ class OrderProcess
         $orderItem->save();
         $this->carmisService->soldByIDS($ids);
 
+        // 销量累计：stockMode==1 已在 fulfillOrder 预占段累加，这里仅 stockMode==2（发货时扣）追加
+        $stockMode = cfg('stock_mode', 2);
+        if ($stockMode == 2) {
+            GoodsSub::where('id', $orderItem->sub_id)
+                ->increment('sales_volume', $orderItem->quantity);
+            Goods::where('id', $orderItem->goods_id)
+                ->increment('sales_volume', $orderItem->quantity);
+        }
+
         // 发货邮件
         $mailData = [
             'product_name' => $orderItem->goods_name ?? '未知商品',
@@ -720,6 +733,7 @@ class OrderProcess
                 return;
             }
             GoodsSub::where('id', $orderItem->sub_id)->increment('sales_volume', $orderItem->quantity);
+            Goods::where('id', $orderItem->goods_id)->increment('sales_volume', $orderItem->quantity);
         }
 
         // 通知管理员
@@ -768,6 +782,7 @@ class OrderProcess
                     throw new \Exception("库存扣减失败，订单标记为异常: {$order->order_sn}");
                 }
                 GoodsSub::where('id', $orderItem->sub_id)->increment('sales_volume', $orderItem->quantity);
+                Goods::where('id', $orderItem->goods_id)->increment('sales_volume', $orderItem->quantity);
             }
         }
         // 邮件数据
