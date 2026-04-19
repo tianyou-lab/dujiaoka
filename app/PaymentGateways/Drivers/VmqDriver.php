@@ -52,7 +52,11 @@ class VmqDriver extends AbstractPaymentDriver
             $this->payGateway = $payGateway;
 
             if (!in_array($payway, $this->getSupportedPayways(), true)) {
-                throw new RuleValidationException(__('dujiaoka.prompt.payment_method_not_supported'));
+                throw new RuleValidationException(sprintf(
+                    '%s [payway=%s，V免签通道仅支持 vwx(微信) / vzfb(支付宝)；请到后台 → 支付通道 → 编辑当前 V免签通道，把「支付标识 pay_check」字段改为 vwx 或 vzfb]',
+                    __('dujiaoka.prompt.payment_method_not_supported'),
+                    $payway
+                ));
             }
 
             $this->validateOrderStatus();
