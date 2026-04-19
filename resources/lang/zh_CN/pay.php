@@ -4,6 +4,7 @@ return [
     'labels' => [
         'Pay' => '支付通道',
         'pay' => '支付通道',
+        'alipay_cert_section' => '支付宝证书（仅支付宝通道需要）',
     ],
     'fields' => [
         'merchant_id' => '商户 ID',
@@ -24,10 +25,19 @@ return [
         'pay_client_pc' => '电脑PC',
         'pay_client_mobile' => '手机',
         'pay_client_all' => '通用',
+        'app_public_cert' => '应用公钥证书 (appCertPublicKey_*.crt)',
+        'alipay_public_cert' => '支付宝公钥证书 (alipayCertPublicKey_RSA2.crt)',
+        'alipay_root_cert' => '支付宝根证书 (alipayRootCert.crt)',
     ],
     'options' => [
     ],
-    'helps' =>[
-        'pay_fee' => '单位百分比。如填写0.38，则代表0.38%的通道手续费，下单时价格会自动加上这笔手续费。'
-    ]
+    'helps' => [
+        'pay_fee' => '单位百分比。如填写0.38，则代表0.38%的通道手续费，下单时价格会自动加上这笔手续费。',
+        'merchant_key' => '支付宝场景：旧版「公钥模式」字段，v3 已不再使用，可留空。其他通道按各自要求填写。',
+        'merchant_pem' => '支付宝场景：填【应用私钥】字符串（不要带 BEGIN/END 行）。其他通道按各自要求填写。',
+        'alipay_cert_section' => '支付宝当面付/网页/WAP 必须使用「证书模式」。请到 https://open.alipay.com 下载 3 个 .crt 证书文件，用记事本打开后将完整内容（含 -----BEGIN/END CERTIFICATE-----）粘贴到下面对应的输入框。其他通道（微信、TokenPay、Epusdt 等）可忽略此区域。',
+        'app_public_cert' => '在支付宝开放平台 → 应用详情 → 开发设置 → 接口加签方式 中下载，文件名形如 appCertPublicKey_2021xxxxxxxxxxxx.crt',
+        'alipay_public_cert' => '同一处下载，文件名形如 alipayCertPublicKey_RSA2.crt',
+        'alipay_root_cert' => '同一处下载，文件名形如 alipayRootCert.crt',
+    ],
 ];

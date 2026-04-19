@@ -4,12 +4,13 @@ namespace App\PaymentGateways\Drivers;
 
 use App\PaymentGateways\AbstractPaymentDriver;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Yansongda\Pay\Pay;
 use App\Models\Order;
 use App\Models\Pay as PayModel;
 
 /**
- * 支付宝支付驱动
+ * 支付宝支付驱动（适配 yansongda/pay v3 证书模式）
  */
 class AlipayDriver extends AbstractPaymentDriver
 {
@@ -29,7 +30,7 @@ class AlipayDriver extends AbstractPaymentDriver
             return $this->processPayway($payway, $config, $orderData);
 
         } catch (\Exception $e) {
-            \Log::error('AlipayDriver gateway error', ['message' => $e->getMessage()]);
+            Log::error('AlipayDriver gateway error', ['message' => $e->getMessage()]);
             return $this->err(__('dujiaoka.prompt.abnormal_payment_channel'));
         }
     }
@@ -50,12 +51,15 @@ class AlipayDriver extends AbstractPaymentDriver
 
             $payService = app(\App\Services\Payment::class);
             $payGateway = $payService->detail($order->pay_id);
-            
+
             if (!$payGateway || $payGateway->pay_handleroute !== 'alipay') {
                 return 'error';
             }
 
-            $config = $this->buildConfigFromGateway($payGateway);
+            $this->payGateway = $payGateway;
+            $this->order = $order;
+            $config = $this->buildConfig();
+
             $result = $this->verify($config, $request);
 
             if ($result['status'] !== 'success') {
@@ -70,25 +74,26 @@ class AlipayDriver extends AbstractPaymentDriver
 
             return 'success';
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('Alipay notify exception: ' . $e->getMessage());
+            Log::error('Alipay notify exception: ' . $e->getMessage());
             return 'fail';
         }
     }
 
     /**
-     * 验证支付结果
+     * 验证支付结果（v3 callback）
      */
     public function verify(array $config, Request $request): array
     {
-        $pay = Pay::alipay($config);
-        $result = $pay->verify();
+        Pay::config($config);
+        $data = Pay::alipay()->callback();
 
-        if ($result->trade_status === 'TRADE_SUCCESS' || $result->trade_status === 'TRADE_FINISHED') {
+        $tradeStatus = $data->get('trade_status');
+        if ($tradeStatus === 'TRADE_SUCCESS' || $tradeStatus === 'TRADE_FINISHED') {
             return [
                 'status' => 'success',
-                'out_trade_no' => $result->out_trade_no,
-                'total_amount' => $result->total_amount,
-                'trade_no' => $result->trade_no,
+                'out_trade_no' => $data->get('out_trade_no'),
+                'total_amount' => $data->get('total_amount'),
+                'trade_no' => $data->get('trade_no'),
             ];
         }
 
@@ -103,50 +108,81 @@ class AlipayDriver extends AbstractPaymentDriver
         return ['zfbf2f', 'alipayscan', 'aliweb', 'aliwap'];
     }
 
-    /**
-     * 获取驱动名称
-     */
     public function getName(): string
     {
         return 'alipay';
     }
 
-    /**
-     * 获取驱动显示名称
-     */
     public function getDisplayName(): string
     {
         return '支付宝';
     }
 
     /**
-     * 构建支付配置
+     * 构建支付配置（yansongda/pay v3 证书模式）
+     *
+     * 数据库存的是证书内容，运行时落盘成 .crt 文件，再把路径塞给 SDK。
      */
     protected function buildConfig(): array
     {
+        $payGateway = $this->payGateway;
+
+        $appPublicCertPath = $this->materializeCert($payGateway, 'app_public_cert');
+        $alipayPublicCertPath = $this->materializeCert($payGateway, 'alipay_public_cert');
+        $alipayRootCertPath = $this->materializeCert($payGateway, 'alipay_root_cert');
+
         return [
-            'app_id' => $this->payGateway->merchant_id,
-            'ali_public_key' => $this->payGateway->merchant_key,
-            'private_key' => $this->payGateway->merchant_pem,
-            'notify_url' => $this->getNotifyUrl(),
-            'return_url' => $this->getReturnUrl($this->order->order_sn),
+            'alipay' => [
+                'default' => [
+                    'app_id' => (string)$payGateway->merchant_id,
+                    // 应用私钥：v3 接受字符串或路径，这里直接传字符串
+                    'app_secret_cert' => (string)$payGateway->merchant_pem,
+                    'app_public_cert_path' => $appPublicCertPath,
+                    'alipay_public_cert_path' => $alipayPublicCertPath,
+                    'alipay_root_cert_path' => $alipayRootCertPath,
+                    'return_url' => isset($this->order) ? $this->getReturnUrl($this->order->order_sn) : '',
+                    'notify_url' => $this->getNotifyUrl(),
+                    'mode' => Pay::MODE_NORMAL,
+                ],
+            ],
             'http' => [
                 'timeout' => 10.0,
                 'connect_timeout' => 10.0,
+            ],
+            'logger' => [
+                'enable' => false,
             ],
         ];
     }
 
     /**
-     * 从网关配置构建配置
+     * 把数据库里的证书内容写成临时文件并返回路径。
+     * 用 md5(content) 做缓存键，避免每次请求重复落盘。
      */
-    protected function buildConfigFromGateway(PayModel $payGateway): array
+    protected function materializeCert(PayModel $payGateway, string $field): string
     {
-        return [
-            'app_id' => $payGateway->merchant_id,
-            'ali_public_key' => $payGateway->merchant_key,
-            'private_key' => $payGateway->merchant_pem,
-        ];
+        $content = (string)($payGateway->{$field} ?? '');
+        if ($content === '') {
+            throw new \RuntimeException(sprintf(
+                '支付宝证书未配置：[%s]，请到后台 → 支付通道 → 编辑当前支付宝通道，把对应 .crt 文件内容粘贴进去',
+                $field
+            ));
+        }
+
+        $dir = storage_path('app/alipay_certs');
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0750, true);
+        }
+
+        $hash = substr(md5($content), 0, 12);
+        $path = $dir . DIRECTORY_SEPARATOR . sprintf('pay_%d_%s_%s.crt', $payGateway->id, $field, $hash);
+
+        if (!is_file($path)) {
+            file_put_contents($path, $content);
+            @chmod($path, 0640);
+        }
+
+        return $path;
     }
 
     /**
@@ -158,46 +194,49 @@ class AlipayDriver extends AbstractPaymentDriver
             case 'zfbf2f':
             case 'alipayscan':
                 return $this->handleScanPay($config, $orderData);
-            
+
             case 'aliweb':
                 return $this->handleWebPay($config, $orderData);
-            
+
             case 'aliwap':
                 return $this->handleWapPay($config, $orderData);
-                
+
             default:
                 return $this->err(__('dujiaoka.prompt.payment_method_not_supported'));
         }
     }
 
     /**
-     * 处理扫码支付
+     * 当面付（出示二维码给买家扫）
      */
     protected function handleScanPay(array $config, array $orderData)
     {
-        $result = Pay::alipay($config)->scan($orderData)->toArray();
-        
+        Pay::config($config);
+        $result = Pay::alipay()->scan($orderData);
+
         return $this->render('static_pages/qrpay', [
             'payname' => $this->order->order_sn,
             'actual_price' => (float)$this->order->actual_price,
             'orderid' => $this->order->order_sn,
-            'jump_payuri' => $result['qr_code'],
+            'jump_payuri' => $result->get('qr_code'),
         ], __('dujiaoka.scan_qrcode_to_pay'));
     }
 
     /**
-     * 处理网页支付
+     * 电脑网页支付
      */
     protected function handleWebPay(array $config, array $orderData)
     {
-        return Pay::alipay($config)->web($orderData);
+        Pay::config($config);
+        return Pay::alipay()->web($orderData);
     }
 
     /**
-     * 处理手机网页支付
+     * 手机 H5 支付（v3 中 wap 已更名为 h5）
      */
     protected function handleWapPay(array $config, array $orderData)
     {
-        return Pay::alipay($config)->wap($orderData);
+        Pay::config($config);
+        return Pay::alipay()->h5($orderData);
     }
 }

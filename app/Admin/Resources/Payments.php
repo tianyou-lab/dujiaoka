@@ -78,11 +78,38 @@ class Payments extends Resource
 
                 Forms\Components\Textarea::make('merchant_key')
                     ->label(__('pay.fields.merchant_key'))
+                    ->helperText(__('pay.helps.merchant_key'))
                     ->rows(3),
 
                 Forms\Components\Textarea::make('merchant_pem')
                     ->label(__('pay.fields.merchant_pem'))
+                    ->helperText(__('pay.helps.merchant_pem'))
                     ->rows(5),
+
+                Forms\Components\Section::make(__('pay.labels.alipay_cert_section'))
+                    ->description(__('pay.helps.alipay_cert_section'))
+                    ->collapsible()
+                    ->collapsed(fn ($record) => $record && $record->pay_handleroute !== 'alipay')
+                    ->schema([
+                        Forms\Components\Textarea::make('app_public_cert')
+                            ->label(__('pay.fields.app_public_cert'))
+                            ->helperText(__('pay.helps.app_public_cert'))
+                            ->placeholder("-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----")
+                            ->rows(6),
+
+                        Forms\Components\Textarea::make('alipay_public_cert')
+                            ->label(__('pay.fields.alipay_public_cert'))
+                            ->helperText(__('pay.helps.alipay_public_cert'))
+                            ->placeholder("-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----")
+                            ->rows(6),
+
+                        Forms\Components\Textarea::make('alipay_root_cert')
+                            ->label(__('pay.fields.alipay_root_cert'))
+                            ->helperText(__('pay.helps.alipay_root_cert'))
+                            ->placeholder("-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----")
+                            ->rows(6),
+                    ])
+                    ->columnSpanFull(),
             ]);
     }
 
