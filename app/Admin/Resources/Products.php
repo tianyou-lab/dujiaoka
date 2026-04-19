@@ -226,76 +226,105 @@ class Products extends Resource
                 Forms\Components\Section::make('高级配置')
                     ->description('可选设置：如不需要可留空。涉及下单表单、数量阶梯价、发货后的外部回调等')
                     ->schema([
-                        Forms\Components\Repeater::make('customer_form_fields')
-                            ->label('客户输入表单')
-                            ->helperText('客户下单时需要额外填写的信息（如游戏账号、微信号等）。留空则下单只需填邮箱')
+                        Forms\Components\Section::make('客户输入表单')
+                            ->description('客户下单时需要额外填写的资料（如游戏账号、微信号）。留空则下单只需填邮箱')
                             ->schema([
-                                Forms\Components\TextInput::make('field_key')
-                                    ->label('字段键')
-                                    ->placeholder('如 game_id / wechat')
-                                    ->helperText('英文/数字，提交到后端的 key')
-                                    ->required(),
-                                Forms\Components\Select::make('field_type')
-                                    ->label('字段类型')
-                                    ->options([
-                                        'input' => '输入框',
-                                        'switch' => '开关'
+                                Forms\Components\Repeater::make('customer_form_fields')
+                                    ->hiddenLabel()
+                                    ->schema([
+                                        Forms\Components\TextInput::make('field_key')
+                                            ->label('字段键')
+                                            ->placeholder('game_id / wechat')
+                                            ->helperText('英文/数字，提交到后端的 key')
+                                            ->required(),
+                                        Forms\Components\Select::make('field_type')
+                                            ->label('字段类型')
+                                            ->options([
+                                                'input' => '输入框',
+                                                'switch' => '开关',
+                                            ])
+                                            ->native(false)
+                                            ->required(),
+                                        Forms\Components\TextInput::make('field_description')
+                                            ->label('字段说明')
+                                            ->placeholder('请填写您的游戏 UID')
+                                            ->helperText('展示给客户的提示文案')
+                                            ->required(),
                                     ])
-                                    ->required(),
-                                Forms\Components\TextInput::make('field_description')
-                                    ->label('字段说明')
-                                    ->placeholder('如"请填写您的游戏 UID"')
-                                    ->helperText('展示给客户的提示文案')
-                                    ->required(),
+                                    ->columns(3)
+                                    ->addActionLabel('+ 添加字段')
+                                    ->reorderableWithButtons()
+                                    ->cloneable()
+                                    ->collapsible()
+                                    ->itemLabel(fn (array $state): ?string => $state['field_description'] ?? $state['field_key'] ?? null)
+                                    ->defaultItems(0)
+                                    ->mutateRelationshipDataBeforeCreateUsing(fn (array $data): array => $data)
+                                    ->mutateRelationshipDataBeforeSaveUsing(fn (array $data): array => $data),
                             ])
-                            ->columns(3)
-                            ->addActionLabel('添加字段')
                             ->collapsible()
-                            ->columnSpanFull()
-                            ->defaultItems(0)
-                            ->mutateRelationshipDataBeforeCreateUsing(fn (array $data): array => $data)
-                            ->mutateRelationshipDataBeforeSaveUsing(fn (array $data): array => $data),
+                            ->collapsed(fn ($record) => empty($record?->customer_form_fields))
+                            ->columnSpanFull(),
 
-                        Forms\Components\Repeater::make('wholesale_prices')
-                            ->label('批发价设置')
-                            ->helperText('按数量阶梯降价：下单数量≥门槛时自动使用对应单价。例如：≥5 件 9 元/件、≥10 件 8 元/件')
+                        Forms\Components\Section::make('批发价设置（按量阶梯降价）')
+                            ->description('下单数量 ≥ 门槛时自动使用对应单价。例如：≥5 件 9 元/件、≥10 件 8 元/件')
                             ->schema([
-                                Forms\Components\TextInput::make('min_quantity')
-                                    ->label('购买数量大于等于')
-                                    ->numeric()
-                                    ->suffix('件时')
-                                    ->required(),
-                                Forms\Components\TextInput::make('unit_price')
-                                    ->label('每件价格')
-                                    ->numeric()
-                                    ->prefix('¥')
-                                    ->suffix('元')
-                                    ->required(),
+                                Forms\Components\Repeater::make('wholesale_prices')
+                                    ->hiddenLabel()
+                                    ->schema([
+                                        Forms\Components\TextInput::make('min_quantity')
+                                            ->label('数量门槛')
+                                            ->numeric()
+                                            ->suffix('件及以上')
+                                            ->required(),
+                                        Forms\Components\TextInput::make('unit_price')
+                                            ->label('单价')
+                                            ->numeric()
+                                            ->prefix('¥')
+                                            ->suffix('元/件')
+                                            ->required(),
+                                    ])
+                                    ->columns(2)
+                                    ->addActionLabel('+ 添加阶梯')
+                                    ->reorderableWithButtons()
+                                    ->collapsible()
+                                    ->itemLabel(fn (array $state): ?string => (isset($state['min_quantity'], $state['unit_price']))
+                                        ? sprintf('≥ %s 件，%s 元/件', $state['min_quantity'], $state['unit_price'])
+                                        : null)
+                                    ->defaultItems(0)
+                                    ->mutateRelationshipDataBeforeCreateUsing(fn (array $data): array => $data)
+                                    ->mutateRelationshipDataBeforeSaveUsing(fn (array $data): array => $data),
                             ])
-                            ->columns(2)
-                            ->addActionLabel('添加批发价')
                             ->collapsible()
-                            ->columnSpanFull()
-                            ->defaultItems(0)
-                            ->mutateRelationshipDataBeforeCreateUsing(fn (array $data): array => $data)
-                            ->mutateRelationshipDataBeforeSaveUsing(fn (array $data): array => $data),
+                            ->collapsed(fn ($record) => empty($record?->wholesale_prices))
+                            ->columnSpanFull(),
 
-                        Forms\Components\Group::make([
-                            Forms\Components\Select::make('api_hook')
-                                ->label('发货回调服务器')
-                                ->helperText('订单发货成功后，向预设的外部 HTTP 接口 POST 订单信息（标题/订单号/邮箱/金额/卡密/商品ID）。先在"其他配置 → 回调服务器"里新建 HTTP 服务器才能在这里选择')
-                                ->options(RemoteServer::pluck('name', 'id'))
-                                ->placeholder('无（不发起回调）'),
-                            Forms\Components\TextInput::make('ord')
-                                ->label('排序')
-                                ->numeric()
-                                ->default(1)
-                                ->helperText('数字越小越靠前'),
-                            Forms\Components\Toggle::make('is_open')
-                                ->label('是否显示')
-                                ->helperText('关闭后商品在前台隐藏')
-                                ->default(true),
-                        ])->columns(3),
+                        Forms\Components\Section::make('展示与发货回调')
+                            ->schema([
+                                Forms\Components\Grid::make(12)
+                                    ->schema([
+                                        Forms\Components\Select::make('api_hook')
+                                            ->label('发货回调服务器')
+                                            ->hint('先到「其他配置 → 回调服务器」新建')
+                                            ->helperText('订单发货成功后向外部 HTTP 接口 POST 订单信息')
+                                            ->options(RemoteServer::pluck('name', 'id'))
+                                            ->placeholder('无（不发起回调）')
+                                            ->native(false)
+                                            ->columnSpan(6),
+                                        Forms\Components\TextInput::make('ord')
+                                            ->label('排序')
+                                            ->numeric()
+                                            ->default(1)
+                                            ->helperText('数字越小越靠前')
+                                            ->columnSpan(3),
+                                        Forms\Components\Toggle::make('is_open')
+                                            ->label('前台是否显示')
+                                            ->helperText('关闭则隐藏该商品')
+                                            ->default(true)
+                                            ->inline(false)
+                                            ->columnSpan(3),
+                                    ]),
+                            ])
+                            ->columnSpanFull(),
                     ])->collapsed(),
             ]);
     }
