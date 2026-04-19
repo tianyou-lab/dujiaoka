@@ -6,10 +6,8 @@ use App\Settings\MailSettings;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Pages\Page;
-use Filament\Support\Exceptions\Halt;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Mail\MailServiceProvider;
 
 class ManageEmailTest extends Page
 {
@@ -53,7 +51,7 @@ class ManageEmailTest extends Page
                             ->email()
                             ->required()
                             ->default(fn () => auth()->user()?->email ?? '')
-                            ->helperText('仅限发送到管理员邮箱，防止滥用'),
+                            ->helperText('可发送到任意合法邮箱地址，建议使用你能接收到的邮箱以便验证'),
 
                         Forms\Components\TextInput::make('title')
                             ->label(__('email-test.labels.title'))
@@ -81,17 +79,6 @@ class ManageEmailTest extends Page
             $title = $data['title'];
             $body = $data['body'];
 
-            $adminEmail = auth()->user()?->email;
-            if (!$adminEmail || $to !== $adminEmail) {
-                Notification::make()
-                    ->title('发送失败')
-                    ->body('测试邮件只能发送到当前管理员邮箱: ' . e($adminEmail))
-                    ->danger()
-                    ->send();
-                throw new Halt();
-            }
-
-            // 获取邮件配置
             $mailSettings = app(MailSettings::class);
 
             if (empty($mailSettings->host) || empty($mailSettings->username) || empty($mailSettings->from_address)) {
@@ -125,8 +112,6 @@ class ManageEmailTest extends Page
                 ->success()
                 ->send();
 
-        } catch (Halt $e) {
-            throw $e;
         } catch (\Throwable $e) {
             \Log::error('邮件发送测试失败', [
                 'error' => $e->getMessage(),
@@ -139,8 +124,6 @@ class ManageEmailTest extends Page
                 ->danger()
                 ->persistent()
                 ->send();
-
-            throw new Halt();
         }
     }
 
