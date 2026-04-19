@@ -759,7 +759,39 @@ CREATE TABLE `settings` (
 -- Records of settings
 -- ----------------------------
 BEGIN;
+
+-- System Settings（订单/推送/验证码/CDN 等）
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('system', 'order_expire_time', '5', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('system', 'is_open_img_code', 'false', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('system', 'order_ip_limits', '3', 0, now(), now());
 INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('system', 'contact_required', '"email"', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('system', 'stock_mode', '2', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('system', 'is_open_server_jiang', 'false', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('system', 'server_jiang_token', 'null', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('system', 'is_open_telegram_push', 'false', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('system', 'telegram_bot_token', 'null', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('system', 'telegram_userid', 'null', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('system', 'is_open_bark_push', 'false', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('system', 'is_open_bark_push_url', 'false', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('system', 'bark_server', 'null', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('system', 'bark_token', 'null', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('system', 'is_open_qywxbot_push', 'false', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('system', 'qywxbot_key', 'null', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('system', 'geetest_id', 'null', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('system', 'geetest_key', 'null', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('system', 'is_open_geetest', 'false', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('system', 'cdn_url', 'null', 0, now(), now());
+
+-- Mail Settings（SMTP / 发件人 / 管理员邮箱）
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('mail', 'driver', '"smtp"', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('mail', 'host', 'null', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('mail', 'port', '465', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('mail', 'username', 'null', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('mail', 'password', 'null', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('mail', 'encryption', '"ssl"', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('mail', 'from_address', 'null', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('mail', 'from_name', '"启航数卡"', 0, now(), now());
+INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('mail', 'manage_email', 'null', 0, now(), now());
 
 -- Shop Settings 基础设置
 INSERT INTO `settings` (`group`, `name`, `payload`, `locked`, `created_at`, `updated_at`) VALUES ('shop', 'title', '"启航数卡"', 0, now(), now());
