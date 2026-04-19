@@ -12,7 +12,15 @@ use Filament\Tables\Table;
 class CarmisRelationManager extends RelationManager
 {
     protected static string $relationship = 'carmis';
-    
+
+    protected static ?string $title = '卡密库存';
+
+    protected static ?string $modelLabel = '卡密';
+
+    protected static ?string $pluralModelLabel = '卡密';
+
+    protected static ?string $recordTitleAttribute = 'carmi';
+
     public static function canViewForRecord(\Illuminate\Database\Eloquent\Model $ownerRecord, string $pageClass): bool
     {
         return $ownerRecord->type === \App\Models\BaseModel::AUTOMATIC_DELIVERY;
