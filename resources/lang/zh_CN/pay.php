@@ -4,6 +4,8 @@ return [
     'labels' => [
         'Pay' => '支付通道',
         'pay' => '支付通道',
+        'section_basic' => '基础信息',
+        'section_credentials' => '商户凭据',
         'alipay_cert_section' => '支付宝证书（仅支付宝通道需要）',
     ],
     'fields' => [
@@ -32,7 +34,9 @@ return [
     'options' => [
     ],
     'helps' => [
-        'pay_fee' => '单位百分比。如填写0.38，则代表0.38%的通道手续费，下单时价格会自动加上这笔手续费。',
+        'pay_fee' => '单位百分比。如填写 0.38，则代表 0.38% 的通道手续费，下单时价格会自动加上这笔手续费。',
+        'section_basic' => '通道的基本属性，控制是否启用、显示在哪种客户端、走哪个支付驱动等。',
+        'section_credentials' => '商户号、KEY、密钥等通用凭据。不同通道用法不同，请参考下方每个字段的提示。',
         'merchant_key' => '支付宝场景：旧版「公钥模式」字段，v3 已不再使用，可留空。其他通道按各自要求填写。',
         'merchant_pem' => '支付宝场景：填【应用私钥】字符串（不要带 BEGIN/END 行）。其他通道按各自要求填写。',
         'alipay_cert_section' => '支付宝当面付/网页/WAP 必须使用「证书模式」。请到 https://open.alipay.com 下载 3 个 .crt 证书文件，用记事本打开后将完整内容（含 -----BEGIN/END CERTIFICATE-----）粘贴到下面对应的输入框。其他通道（微信、TokenPay、Epusdt 等）可忽略此区域。',

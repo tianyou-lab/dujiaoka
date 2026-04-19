@@ -4,6 +4,8 @@ return [
     'labels' => [
         'Pay' => '支付通道',
         'pay' => '支付通道',
+        'section_basic' => '基礎資訊',
+        'section_credentials' => '商戶憑據',
         'alipay_cert_section' => '支付寶證書（僅支付寶通道需要）',
     ],
     'fields' => [
@@ -32,6 +34,9 @@ return [
     'options' => [
     ],
     'helps' => [
+        'pay_fee' => '單位百分比。如填寫 0.38，則代表 0.38% 的通道手續費，下單時價格會自動加上這筆手續費。',
+        'section_basic' => '通道的基本屬性，控制是否啟用、顯示在哪種客戶端、走哪個支付驅動等。',
+        'section_credentials' => '商戶號、KEY、金鑰等通用憑據。不同通道用法不同，請參考下方每個欄位的提示。',
         'merchant_key' => '支付寶場景：舊版「公鑰模式」欄位，v3 已不再使用，可留空。其他通道按各自要求填寫。',
         'merchant_pem' => '支付寶場景：填【應用私鑰】字串（不要帶 BEGIN/END 行）。其他通道按各自要求填寫。',
         'alipay_cert_section' => '支付寶當面付/網頁/WAP 必須使用「證書模式」。請到 https://open.alipay.com 下載 3 個 .crt 證書文件，用記事本打開後將完整內容（含 -----BEGIN/END CERTIFICATE-----）貼到下面對應的輸入框。其他通道（微信、TokenPay、Epusdt 等）可忽略此區域。',

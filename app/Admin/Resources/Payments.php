@@ -34,62 +34,75 @@ class Payments extends Resource
     {
         return $form
             ->schema([
-                Forms\Components\TextInput::make('pay_name')
-                    ->label(__('pay.fields.pay_name'))
-                    ->required()
-                    ->maxLength(255),
+                Forms\Components\Section::make(__('pay.labels.section_basic'))
+                    ->description(__('pay.helps.section_basic'))
+                    ->columns(2)
+                    ->schema([
+                        Forms\Components\TextInput::make('pay_name')
+                            ->label(__('pay.fields.pay_name'))
+                            ->required()
+                            ->maxLength(255),
 
-                Forms\Components\TextInput::make('pay_check')
-                    ->label(__('pay.fields.pay_check'))
-                    ->required()
-                    ->maxLength(255),
+                        Forms\Components\TextInput::make('pay_check')
+                            ->label(__('pay.fields.pay_check'))
+                            ->required()
+                            ->maxLength(255),
 
-                Forms\Components\TextInput::make('pay_fee')
-                    ->label(__('pay.fields.pay_fee'))
-                    ->numeric()
-                    ->step(0.01)
-                    ->default(0),
+                        Forms\Components\Select::make('pay_method')
+                            ->label(__('pay.fields.pay_method'))
+                            ->options(Pay::getMethodMap())
+                            ->required(),
 
-                Forms\Components\Select::make('pay_method')
-                    ->label(__('pay.fields.pay_method'))
-                    ->options(Pay::getMethodMap())
-                    ->required(),
+                        Forms\Components\Select::make('pay_client')
+                            ->label(__('pay.fields.pay_client'))
+                            ->options(Pay::getClientMap())
+                            ->required(),
 
-                Forms\Components\TextInput::make('merchant_id')
-                    ->label(__('pay.fields.merchant_id'))
-                    ->maxLength(255),
+                        Forms\Components\TextInput::make('pay_handleroute')
+                            ->label(__('pay.fields.pay_handleroute'))
+                            ->required()
+                            ->maxLength(255),
 
-                Forms\Components\Select::make('pay_client')
-                    ->label(__('pay.fields.pay_client'))
-                    ->options(Pay::getClientMap())
-                    ->required(),
+                        Forms\Components\TextInput::make('pay_fee')
+                            ->label(__('pay.fields.pay_fee'))
+                            ->helperText(__('pay.helps.pay_fee'))
+                            ->numeric()
+                            ->step(0.01)
+                            ->default(0),
 
-                Forms\Components\TextInput::make('pay_handleroute')
-                    ->label(__('pay.fields.pay_handleroute'))
-                    ->maxLength(255),
+                        Forms\Components\Toggle::make('china_only')
+                            ->label(__('pay.fields.china_only'))
+                            ->default(false)
+                            ->inline(false),
 
-                Forms\Components\Toggle::make('china_only')
-                    ->label(__('pay.fields.china_only'))
-                    ->default(false),
+                        Forms\Components\Toggle::make('enable')
+                            ->label(__('pay.fields.enable'))
+                            ->default(true)
+                            ->inline(false),
+                    ]),
 
-                Forms\Components\Toggle::make('enable')
-                    ->label(__('pay.fields.enable'))
-                    ->default(true),
+                Forms\Components\Section::make(__('pay.labels.section_credentials'))
+                    ->description(__('pay.helps.section_credentials'))
+                    ->schema([
+                        Forms\Components\TextInput::make('merchant_id')
+                            ->label(__('pay.fields.merchant_id'))
+                            ->maxLength(255),
 
-                Forms\Components\Textarea::make('merchant_key')
-                    ->label(__('pay.fields.merchant_key'))
-                    ->helperText(__('pay.helps.merchant_key'))
-                    ->rows(3),
+                        Forms\Components\Textarea::make('merchant_key')
+                            ->label(__('pay.fields.merchant_key'))
+                            ->helperText(__('pay.helps.merchant_key'))
+                            ->rows(3),
 
-                Forms\Components\Textarea::make('merchant_pem')
-                    ->label(__('pay.fields.merchant_pem'))
-                    ->helperText(__('pay.helps.merchant_pem'))
-                    ->rows(5),
+                        Forms\Components\Textarea::make('merchant_pem')
+                            ->label(__('pay.fields.merchant_pem'))
+                            ->helperText(__('pay.helps.merchant_pem'))
+                            ->rows(5),
+                    ]),
 
                 Forms\Components\Section::make(__('pay.labels.alipay_cert_section'))
                     ->description(__('pay.helps.alipay_cert_section'))
                     ->collapsible()
-                    ->collapsed(fn ($record) => $record && $record->pay_handleroute !== 'alipay')
+                    ->collapsed(fn ($record) => !$record || $record->pay_handleroute !== 'alipay')
                     ->schema([
                         Forms\Components\Textarea::make('app_public_cert')
                             ->label(__('pay.fields.app_public_cert'))
@@ -108,8 +121,7 @@ class Payments extends Resource
                             ->helperText(__('pay.helps.alipay_root_cert'))
                             ->placeholder("-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----")
                             ->rows(6),
-                    ])
-                    ->columnSpanFull(),
+                    ]),
             ]);
     }
 
