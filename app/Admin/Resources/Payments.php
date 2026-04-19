@@ -83,10 +83,6 @@ class Payments extends Resource
                 Forms\Components\Textarea::make('merchant_pem')
                     ->label(__('pay.fields.merchant_pem'))
                     ->rows(5),
-
-                Forms\Components\Textarea::make('merchant_key_64')
-                    ->label(__('pay.fields.merchant_key_64'))
-                    ->rows(3),
             ]);
     }
 
