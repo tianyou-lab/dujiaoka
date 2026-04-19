@@ -94,21 +94,26 @@ class ManageEmailTest extends Page
             // 获取邮件配置
             $mailSettings = app(MailSettings::class);
 
-            // 临时覆盖邮件配置
+            if (empty($mailSettings->host) || empty($mailSettings->username) || empty($mailSettings->from_address)) {
+                throw new \RuntimeException('请先在「邮件设置」中填写 SMTP 主机/用户名/发件地址，再回此页测试。');
+            }
+
             config([
                 'mail.default' => $mailSettings->driver ?? 'smtp',
                 'mail.mailers.smtp.transport' => 'smtp',
-                'mail.mailers.smtp.host' => $mailSettings->host ?? '',
+                'mail.mailers.smtp.host' => $mailSettings->host,
                 'mail.mailers.smtp.port' => $mailSettings->port ?? 465,
-                'mail.mailers.smtp.encryption' => $mailSettings->encryption ?? 'ssl',
-                'mail.mailers.smtp.username' => $mailSettings->username ?? '',
+                'mail.mailers.smtp.encryption' => $mailSettings->encryption ?: null,
+                'mail.mailers.smtp.username' => $mailSettings->username,
                 'mail.mailers.smtp.password' => $mailSettings->password ?? '',
-                'mail.from.address' => $mailSettings->from_address ?? '',
-                'mail.from.name' => $mailSettings->from_name ?? '独角发卡',
+                'mail.mailers.smtp.timeout' => 15,
+                'mail.from.address' => $mailSettings->from_address,
+                'mail.from.name' => $mailSettings->from_name ?? '启航数卡',
             ]);
 
-            // 重新注册邮件服务
-            (new MailServiceProvider(app()))->register();
+            app()->forgetInstance('mail.manager');
+            app()->forgetInstance('mailer');
+            \Illuminate\Support\Facades\Mail::clearResolvedInstances();
 
             // 发送邮件
             Mail::send(['html' => 'email.mail'], ['body' => $body], function ($message) use ($to, $title) {
@@ -122,12 +127,17 @@ class ManageEmailTest extends Page
 
         } catch (Halt $e) {
             throw $e;
-        } catch (\Exception $e) {
-            \Log::error('邮件发送测试失败', ['error' => $e->getMessage()]);
+        } catch (\Throwable $e) {
+            \Log::error('邮件发送测试失败', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile() . ':' . $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             Notification::make()
                 ->title('发送失败')
-                ->body('邮件发送失败，请检查 SMTP 配置是否正确。详细错误已记录到日志。')
+                ->body('SMTP 错误: ' . $e->getMessage())
                 ->danger()
+                ->persistent()
                 ->send();
 
             throw new Halt();
