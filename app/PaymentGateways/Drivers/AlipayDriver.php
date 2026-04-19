@@ -63,12 +63,20 @@ class AlipayDriver extends AbstractPaymentDriver
      */
     public function notify(Request $request): string
     {
+        $orderSN = (string)$request->input('out_trade_no');
+
         try {
-            $orderSN = $request->input('out_trade_no');
+            Log::info('Alipay notify received', [
+                'order_sn' => $orderSN,
+                'payload' => $request->all(),
+                'ip' => $request->ip(),
+            ]);
+
             $orderService = app(\App\Services\Orders::class);
             $order = $orderService->detailOrderSN($orderSN);
 
             if (!$order) {
+                Log::warning('Alipay notify: order not found', ['order_sn' => $orderSN]);
                 return 'error';
             }
 
@@ -76,6 +84,11 @@ class AlipayDriver extends AbstractPaymentDriver
             $payGateway = $payService->detail($order->pay_id);
 
             if (!$payGateway || $payGateway->pay_handleroute !== 'alipay') {
+                Log::warning('Alipay notify: pay gateway mismatch', [
+                    'order_sn' => $orderSN,
+                    'pay_id' => $order->pay_id,
+                    'pay_handleroute' => $payGateway?->pay_handleroute,
+                ]);
                 return 'error';
             }
 
@@ -86,18 +99,35 @@ class AlipayDriver extends AbstractPaymentDriver
             $result = $this->verify($config, $request);
 
             if ($result['status'] !== 'success') {
+                Log::warning('Alipay notify: verify returned non-success', [
+                    'order_sn' => $orderSN,
+                    'result' => $result,
+                ]);
                 return 'fail';
             }
 
             $this->processPaymentSuccess(
                 $result['out_trade_no'],
-                $result['total_amount'],
-                $result['trade_no']
+                (float)$result['total_amount'],
+                (string)$result['trade_no']
             );
 
+            Log::info('Alipay notify: order completed', [
+                'order_sn' => $orderSN,
+                'trade_no' => $result['trade_no'],
+                'amount' => $result['total_amount'],
+            ]);
+
             return 'success';
-        } catch (\Exception $e) {
-            Log::error('Alipay notify exception: ' . $e->getMessage());
+        } catch (\Throwable $e) {
+            Log::error('Alipay notify exception', [
+                'order_sn' => $orderSN,
+                'exception' => get_class($e),
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return 'fail';
         }
     }

@@ -33,17 +33,19 @@ new QRCode(document.getElementById("qrcode"), {
     colorLight: "#ffffff",
     correctLevel: QRCode.CorrectLevel.H
 });
-// 每3秒轮询订单状态
 var _orderId = @json($orderid);
+var _statusUrl = '/order/status/' + encodeURIComponent(_orderId);
+var _detailUrl = '/order/detail/' + encodeURIComponent(_orderId);
 var timer = setInterval(function(){
-    fetch('/order/check/' + encodeURIComponent(_orderId))
-        .then(r => r.json())
+    fetch(_statusUrl, { credentials: 'same-origin' })
+        .then(function(r){ return r.json().catch(function(){ return {}; }); })
         .then(function(data){
-            if(data.code === 200){
+            if(data && data.code === 200){
                 clearInterval(timer);
-                window.location.href = '/order/detail/' + encodeURIComponent(_orderId);
+                window.location.href = _detailUrl;
             }
-        });
+        })
+        .catch(function(){ /* 轮询失败忽略，下次再试 */ });
 }, 3000);
 </script>
 @stop
