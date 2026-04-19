@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Log;
  *
  * 数据库字段映射（复用 pays 表既有字段）：
  *   - merchant_id  => 通讯密钥（key）          数据库里通常填 32 位随机串
- *   - merchant_pem => V免签监控端的 URL        例如 https://tk.doubaodan.com/
+ *   - merchant_pem => V免签监控端的 URL        例如 https://xxxxx.com/
  *   - merchant_key 未使用
  *
  * pay_handleroute 请填：vmq

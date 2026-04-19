@@ -44,6 +44,6 @@ return [
         'app_public_cert' => '在支付寶開放平台 → 應用詳情 → 開發設置 → 介面加簽方式 中下載，檔名形如 appCertPublicKey_2021xxxxxxxxxxxx.crt',
         'alipay_public_cert' => '同一處下載，檔名形如 alipayCertPublicKey_RSA2.crt',
         'alipay_root_cert' => '同一處下載，檔名形如 alipayRootCert.crt',
-        'vmq_section' => 'V免簽 / 豆包蛋使用 md5 簽名協議，欄位對映如下：「商戶 ID」= V免簽通訊金鑰（32 位隨機字串），「商戶金鑰」= 監控端 URL（例如 https://tk.doubaodan.com/）。「支付處理模組 pay_handleroute」請填 vmq；微信掃碼 payway 用 vwx、支付寶掃碼 payway 用 vzfb。',
+        'vmq_section' => 'V免簽 / 豆包蛋使用 md5 簽名協議，欄位對映如下：「商戶 ID」= V免簽通訊金鑰（32 位隨機字串），「商戶金鑰」= 監控端 URL（例如 https://xxxxx.com/）。「支付處理模組 pay_handleroute」請填 vmq；微信掃碼 payway 用 vwx、支付寶掃碼 payway 用 vzfb。',
     ],
 ];

@@ -136,7 +136,7 @@ class Payments extends Resource
                                     <li><strong>基础信息 → 支付标识 pay_check</strong>：微信扫码填 <code>vwx</code>，支付宝扫码填 <code>vzfb</code></li>
                                     <li><strong>基础信息 → 支付方式</strong> 选「扫码」</li>
                                     <li><strong>商户凭据 → 商户 ID</strong> 填 V免签监控端里的「通讯密钥」（32 位随机串）</li>
-                                    <li><strong>商户凭据 → 商户密钥</strong> 填 V免签监控端 URL（例如 <code>https://tk.doubaodan.com/</code>，结尾斜杠可省）</li>
+                                    <li><strong>商户凭据 → 商户密钥</strong> 填 V免签监控端 URL（例如 <code>https://xxxxx.com/</code>，结尾斜杠可省）</li>
                                     <li><strong>商户凭据 → 商户 KEY</strong> 留空即可</li>
                                     <li>在 V免签监控端里把回调地址设置为本站的 <code>/pay/vmq/notify</code>（URL 结尾不要加斜杠）</li>
                                 </ol>'
