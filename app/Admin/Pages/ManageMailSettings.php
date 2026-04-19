@@ -23,6 +23,11 @@ class ManageMailSettings extends SettingsPage
     
     protected static ?int $navigationSort = 1;
 
+    protected function getSavedNotificationTitle(): ?string
+    {
+        return '邮件设置已保存（下次发件即生效）';
+    }
+
     public function form(Form $form): Form
     {
         return $form

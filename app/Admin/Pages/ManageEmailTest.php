@@ -85,6 +85,8 @@ class ManageEmailTest extends Page
                 throw new \RuntimeException('请先在「邮件设置」中填写 SMTP 主机/用户名/发件地址，再回此页测试。');
             }
 
+            $localDomain = substr(strrchr($mailSettings->from_address, '@'), 1) ?: 'localhost';
+
             config([
                 'mail.default' => $mailSettings->driver ?? 'smtp',
                 'mail.mailers.smtp.transport' => 'smtp',
@@ -94,6 +96,7 @@ class ManageEmailTest extends Page
                 'mail.mailers.smtp.username' => $mailSettings->username,
                 'mail.mailers.smtp.password' => $mailSettings->password ?? '',
                 'mail.mailers.smtp.timeout' => 15,
+                'mail.mailers.smtp.local_domain' => $localDomain,
                 'mail.from.address' => $mailSettings->from_address,
                 'mail.from.name' => $mailSettings->from_name ?? '启航数卡',
             ]);
