@@ -19,9 +19,11 @@ use Illuminate\Support\Facades\Log;
  *
  * pay_handleroute 请填：vmq
  *
- * 支持两种 payway：
- *   - vwx   微信扫码（type=1）
- *   - vzfb  支付宝扫码（type=2）
+ * pay_check（支付标识）按通道区分：
+ *   - 微信通道：只要不含 zfb / alipay / 支付宝 关键字都视为微信（type=1），推荐填 vwx
+ *   - 支付宝通道：含 zfb / alipay / 支付宝 就识别为支付宝（type=2），推荐填 vzfb
+ *
+ * 兼容 vwx / vzfb / vwx_check / 微信 / wechat / zfb / alipay 等各种写法。
  *
  * 协议参考（社区惯例，V免签/V免签升级版/豆包蛋通用）：
  *   createOrder?
@@ -51,14 +53,6 @@ class VmqDriver extends AbstractPaymentDriver
             $this->order = $order;
             $this->payGateway = $payGateway;
 
-            if (!in_array($payway, $this->getSupportedPayways(), true)) {
-                throw new RuleValidationException(sprintf(
-                    '%s [payway=%s，V免签通道仅支持 vwx(微信) / vzfb(支付宝)；请到后台 → 支付通道 → 编辑当前 V免签通道，把「支付标识 pay_check」字段改为 vwx 或 vzfb]',
-                    __('dujiaoka.prompt.payment_method_not_supported'),
-                    $payway
-                ));
-            }
-
             $this->validateOrderStatus();
 
             $endpoint = $this->resolveEndpoint((string) $payGateway->merchant_pem);
@@ -71,7 +65,7 @@ class VmqDriver extends AbstractPaymentDriver
                 throw new RuleValidationException('V免签通讯密钥未配置：请到后台 → 支付通道 → 编辑当前V免签通道，把通讯密钥填到「商户号 merchant_id」字段');
             }
 
-            $type = $payway === self::PAYWAY_ALIPAY ? self::TYPE_ALIPAY : self::TYPE_WECHAT;
+            $type = $this->resolveType($payway);
 
             $payId = $this->generatePayId();
             $param = $order->order_sn;
@@ -201,6 +195,28 @@ class VmqDriver extends AbstractPaymentDriver
     public function getSupportedPayways(): array
     {
         return [self::PAYWAY_WECHAT, self::PAYWAY_ALIPAY];
+    }
+
+    /**
+     * 智能识别支付类型：根据 pay_check（URL 里的 payway）内容做模糊匹配
+     *
+     * - 只要包含 `zfb` / `alipay` / `支付宝` 就识别为支付宝（type=2）
+     * - 其它一律当微信（type=1，V免签最常用的场景）
+     *
+     * 这样用户可以随意填 `vwx`、`vwx_check`、`微信`、`wechat` 等，都能跑通。
+     */
+    protected function resolveType(string $payway): int
+    {
+        $needle = mb_strtolower(trim($payway));
+        if (
+            str_contains($needle, 'zfb') ||
+            str_contains($needle, 'alipay') ||
+            str_contains($needle, '支付宝')
+        ) {
+            return self::TYPE_ALIPAY;
+        }
+
+        return self::TYPE_WECHAT;
     }
 
     public function getName(): string
