@@ -19,6 +19,7 @@
     @include('morpho::layouts._footer')
     
     @include('morpho::layouts._script')
+    @include('morpho::layouts._dialog')
     @include('morpho::layouts._cart_dropdown')
     @section('js')
     @show

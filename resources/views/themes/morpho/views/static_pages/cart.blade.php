@@ -314,10 +314,15 @@ function updateSummary() {
 
 
 document.getElementById('clearCart').addEventListener('click', function() {
-  if (confirm('确定要清空购物车吗？')) {
+  window.showConfirm('确定要清空购物车吗？', {
+    title: '清空购物车',
+    okText: '确认清空',
+    type: 'warn'
+  }).then(function (ok) {
+    if (!ok) return;
     cart.clear();
     renderCart();
-  }
+  });
 });
 
 document.getElementById('proceedCheckout').addEventListener('click', async function() {

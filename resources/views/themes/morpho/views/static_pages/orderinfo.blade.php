@@ -182,12 +182,11 @@ document.addEventListener('DOMContentLoaded', function() {
       
       try {
         await navigator.clipboard.writeText(textarea.value);
-        alert("{{ __('dujiaoka.prompt.copy_text_success') }}");
+        window.showAlert("{{ __('dujiaoka.prompt.copy_text_success') }}", { type: 'info' });
       } catch (err) {
-        // 降级到旧方法
         textarea.select();
         document.execCommand('copy');
-        alert("{{ __('dujiaoka.prompt.copy_text_success') }}");
+        window.showAlert("{{ __('dujiaoka.prompt.copy_text_success') }}", { type: 'info' });
       }
     });
   });

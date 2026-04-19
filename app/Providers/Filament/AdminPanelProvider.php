@@ -63,7 +63,6 @@ class AdminPanelProvider extends PanelProvider
             ])
             // 性能优化配置
             ->spa()
-            ->unsavedChangesAlerts()
             ->databaseNotifications()
             ->databaseNotificationsPolling('30s')
             ->globalSearchKeyBindings(['command+k', 'ctrl+k'])

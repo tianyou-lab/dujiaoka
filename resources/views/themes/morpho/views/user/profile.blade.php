@@ -175,51 +175,53 @@
 @section('js')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // 个人资料表单验证
     document.getElementById('profileForm').addEventListener('submit', function(e) {
         const nickname = this.nickname.value.trim();
         const phone = this.phone.value.trim();
 
         if (nickname && nickname.length > 50) {
             e.preventDefault();
-            alert('昵称不能超过50个字符');
+            window.showAlert('昵称不能超过 50 个字符', { type: 'warn' });
             return;
         }
 
         if (phone && !/^[\d\s\-\+\(\)]+$/.test(phone)) {
             e.preventDefault();
-            alert('请输入有效的手机号码');
+            window.showAlert('请输入有效的手机号码', { type: 'warn' });
             return;
         }
     });
 
-    // 修改密码表单验证
     document.getElementById('passwordForm').addEventListener('submit', function(e) {
-        const currentPassword = this.current_password.value;
-        const newPassword = this.password.value;
-        const confirmPassword = this.password_confirmation.value;
+        if (this.dataset.qhConfirmed === '1') return;
+        e.preventDefault();
+
+        const form = this;
+        const currentPassword = form.current_password.value;
+        const newPassword = form.password.value;
+        const confirmPassword = form.password_confirmation.value;
 
         if (newPassword.length < 8) {
-            e.preventDefault();
-            alert('新密码至少需要8位');
+            window.showAlert('新密码至少需要 8 位', { type: 'warn' });
             return;
         }
-
         if (newPassword !== confirmPassword) {
-            e.preventDefault();
-            alert('两次输入的密码不一致');
+            window.showAlert('两次输入的密码不一致', { type: 'warn' });
             return;
         }
-
         if (currentPassword === newPassword) {
-            e.preventDefault();
-            alert('新密码不能与当前密码相同');
+            window.showAlert('新密码不能与当前密码相同', { type: 'warn' });
             return;
         }
 
-        if (!confirm('确认修改密码吗？修改后将自动退出当前登录状态。')) {
-            e.preventDefault();
-        }
+        window.showConfirm('确认修改密码吗？修改后将自动退出当前登录状态。', {
+            title: '修改密码',
+            okText: '确认修改'
+        }).then(function (ok) {
+            if (!ok) return;
+            form.dataset.qhConfirmed = '1';
+            form.submit();
+        });
     });
 
     // 自动关闭提示框

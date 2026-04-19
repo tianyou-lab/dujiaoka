@@ -239,33 +239,35 @@ document.addEventListener('DOMContentLoaded', function() {
         totalAmountSpan.textContent = '¥' + total.toFixed(2);
     }
 
-    // 表单验证
     document.getElementById('rechargeForm').addEventListener('submit', function(e) {
+        if (this.dataset.qhConfirmed === '1') return;
+        e.preventDefault();
+
+        const form = this;
         const amount = parseFloat(amountInput.value) || 0;
         const payId = document.getElementById('pay_id').value;
 
         if (amount < 1) {
-            e.preventDefault();
-            alert('充值金额不能少于1元');
+            window.showAlert('充值金额不能少于 1 元', { type: 'warn' });
             return;
         }
-
         if (amount > 10000) {
-            e.preventDefault();
-            alert('单次充值金额不能超过10,000元');
+            window.showAlert('单次充值金额不能超过 10,000 元', { type: 'warn' });
             return;
         }
-
         if (!payId) {
-            e.preventDefault();
-            alert('请选择支付方式');
+            window.showAlert('请选择支付方式', { type: 'warn' });
             return;
         }
 
-        // 确认充值
-        if (!confirm(`确认充值 ¥${amount.toFixed(2)} 吗？`)) {
-            e.preventDefault();
-        }
+        window.showConfirm(`确认充值 ¥${amount.toFixed(2)} 吗？`, {
+            title: '充值确认',
+            okText: '确认充值'
+        }).then(function (ok) {
+            if (!ok) return;
+            form.dataset.qhConfirmed = '1';
+            form.submit();
+        });
     });
 });
 </script>
