@@ -30,33 +30,42 @@ class CarmisRelationManager extends RelationManager
     {
         return $form
             ->schema([
-                Forms\Components\Select::make('sub_id')
-                    ->label('商品规格')
-                    ->options(fn ($livewire) => $livewire->ownerRecord->goods_sub()->pluck('name', 'id'))
-                    ->required()
-                    ->afterStateUpdated(function (callable $set, $state, $livewire) {
-                        if ($state && $livewire->ownerRecord) {
-                            $set('goods_id', $livewire->ownerRecord->id);
-                        }
-                    }),
+                Forms\Components\Grid::make(2)
+                    ->schema([
+                        Forms\Components\Select::make('sub_id')
+                            ->label('商品规格')
+                            ->options(fn ($livewire) => $livewire->ownerRecord->goods_sub()->pluck('name', 'id'))
+                            ->required()
+                            ->afterStateUpdated(function (callable $set, $state, $livewire) {
+                                if ($state && $livewire->ownerRecord) {
+                                    $set('goods_id', $livewire->ownerRecord->id);
+                                }
+                            }),
+                        Forms\Components\Select::make('status')
+                            ->label('状态')
+                            ->options(Carmis::getStatusMap())
+                            ->default(Carmis::STATUS_UNSOLD)
+                            ->required(),
+                    ]),
                 Forms\Components\Hidden::make('goods_id')
                     ->default(fn ($livewire) => $livewire->ownerRecord?->id),
-                Forms\Components\Select::make('status')
-                    ->label('状态')
-                    ->options(Carmis::getStatusMap())
-                    ->default(Carmis::STATUS_UNSOLD)
-                    ->required(),
                 Forms\Components\Toggle::make('is_loop')
                     ->label('是否可重复使用')
-                    ->default(false),
+                    ->helperText('开启后，卡密被发放给客户后不会从库存中移除，可重复使用')
+                    ->default(false)
+                    ->inline(false)
+                    ->columnSpanFull(),
                 Forms\Components\Textarea::make('carmi')
                     ->label('卡密内容')
+                    ->placeholder('一张卡密，通常是一串激活码或账号密码')
                     ->required()
-                    ->rows(3),
+                    ->rows(4)
+                    ->columnSpanFull(),
                 Forms\Components\Textarea::make('info')
-                    ->label('卡密信息')
-                    ->helperText('卡密的使用说明或相关信息')
-                    ->rows(3),
+                    ->label('卡密信息（可选）')
+                    ->helperText('卡密的使用说明或补充信息，会随卡密一同发给客户')
+                    ->rows(3)
+                    ->columnSpanFull(),
             ]);
     }
 

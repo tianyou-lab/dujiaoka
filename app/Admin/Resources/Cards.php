@@ -34,46 +34,51 @@ class Cards extends Resource
     {
         return $form
             ->schema([
-                Forms\Components\Select::make('goods_id')
-                    ->label('商品')
-                    ->options(Goods::where('type', Goods::AUTOMATIC_DELIVERY)->pluck('gd_name', 'id'))
-                    ->required()
-                    ->live()
-                    ->afterStateUpdated(fn (Forms\Set $set) => $set('sub_id', 0)),
-                
-                Forms\Components\Select::make('sub_id')
-                    ->label('子商品')
-                    ->options(function (Forms\Get $get) {
-                        $goodsId = $get('goods_id');
-                        if (!$goodsId) {
-                            return [0 => '无子商品'];
-                        }
-                        
-                        $subs = GoodsSub::where('goods_id', $goodsId)->pluck('name', 'id')->toArray();
-                        return [0 => '无子商品'] + $subs;
-                    })
-                    ->default(0)
-                    ->required(),
-                
-                Forms\Components\Select::make('status')
-                    ->label('状态')
-                    ->options(Carmis::getStatusMap())
-                    ->default(Carmis::STATUS_UNSOLD)
-                    ->required(),
-                
-                Forms\Components\Toggle::make('is_loop')
-                    ->label('是否可重复使用')
-                    ->default(false),
-                
+                Forms\Components\Grid::make(2)
+                    ->schema([
+                        Forms\Components\Select::make('goods_id')
+                            ->label('商品')
+                            ->options(Goods::where('type', Goods::AUTOMATIC_DELIVERY)->pluck('gd_name', 'id'))
+                            ->required()
+                            ->live()
+                            ->afterStateUpdated(fn (Forms\Set $set) => $set('sub_id', 0)),
+                        Forms\Components\Select::make('sub_id')
+                            ->label('子商品规格')
+                            ->options(function (Forms\Get $get) {
+                                $goodsId = $get('goods_id');
+                                if (!$goodsId) {
+                                    return [0 => '无子商品'];
+                                }
+                                $subs = GoodsSub::where('goods_id', $goodsId)->pluck('name', 'id')->toArray();
+                                return [0 => '无子商品'] + $subs;
+                            })
+                            ->default(0)
+                            ->required(),
+                    ]),
+                Forms\Components\Grid::make(2)
+                    ->schema([
+                        Forms\Components\Select::make('status')
+                            ->label('状态')
+                            ->options(Carmis::getStatusMap())
+                            ->default(Carmis::STATUS_UNSOLD)
+                            ->required(),
+                        Forms\Components\Toggle::make('is_loop')
+                            ->label('是否可重复使用')
+                            ->helperText('开启后，该卡密被发放后不从库存中移除，可反复发给不同客户')
+                            ->default(false)
+                            ->inline(false),
+                    ]),
                 Forms\Components\Textarea::make('carmi')
                     ->label('卡密内容')
+                    ->placeholder('一张卡密，通常是一串激活码或账号密码')
                     ->required()
-                    ->rows(3),
-                
+                    ->rows(4)
+                    ->columnSpanFull(),
                 Forms\Components\Textarea::make('info')
-                    ->label('卡密信息')
-                    ->helperText('卡密的使用说明或相关信息')
-                    ->rows(3),
+                    ->label('卡密信息（可选）')
+                    ->helperText('卡密的使用说明或补充信息，会随卡密一同发给客户')
+                    ->rows(3)
+                    ->columnSpanFull(),
             ]);
     }
 
