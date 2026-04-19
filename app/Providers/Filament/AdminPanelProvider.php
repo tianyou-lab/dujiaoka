@@ -67,9 +67,9 @@ class AdminPanelProvider extends PanelProvider
             ->databaseNotificationsPolling('30s')
             ->globalSearchKeyBindings(['command+k', 'ctrl+k'])
             ->brandName(fn () => app(\App\Settings\ShopSettings::class)->title ?? config('app.name', '启航数卡'))
-            ->brandLogo(asset('assets/common/images/logo.svg'))
+            ->brandLogo(asset('favicon.ico'))
             ->brandLogoHeight('2rem')
-            ->favicon(asset('favicon.png'))
+            ->favicon(asset('favicon.ico'))
             ->navigationGroups([
                 '系统管理',
                 '用户管理',
