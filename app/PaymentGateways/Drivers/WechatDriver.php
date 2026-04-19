@@ -156,11 +156,11 @@ class WechatDriver extends AbstractPaymentDriver
     {
         $result = Pay::wechat($config)->scan($orderData);
         
-        return $this->render('static_pages/qrpay', [
+        return $this->render('morpho::static_pages.qrpay', [
             'payname' => $this->order->order_sn,
             'actual_price' => (float)$this->order->actual_price,
             'orderid' => $this->order->order_sn,
-            'jump_payuri' => $result->code_url,
+            'qr_code' => $result->code_url,
         ], __('dujiaoka.scan_qrcode_to_pay'));
     }
 

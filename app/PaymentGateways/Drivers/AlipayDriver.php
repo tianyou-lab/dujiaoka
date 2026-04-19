@@ -334,11 +334,11 @@ class AlipayDriver extends AbstractPaymentDriver
         Pay::config($config);
         $result = Pay::alipay()->scan($orderData);
 
-        return $this->render('static_pages/qrpay', [
+        return $this->render('morpho::static_pages.qrpay', [
             'payname' => $this->order->order_sn,
             'actual_price' => (float)$this->order->actual_price,
             'orderid' => $this->order->order_sn,
-            'jump_payuri' => $result->get('qr_code'),
+            'qr_code' => $result->get('qr_code'),
         ], __('dujiaoka.scan_qrcode_to_pay'));
     }
 
