@@ -13,6 +13,20 @@ class Pay extends BaseModel
 
     protected $table = 'pays';
 
+    protected $fillable = [
+        'pay_name',
+        'pay_check',
+        'pay_fee',
+        'pay_method',
+        'pay_client',
+        'merchant_id',
+        'merchant_key',
+        'merchant_pem',
+        'pay_handleroute',
+        'china_only',
+        'enable',
+    ];
+
     // 状态常量
     const ENABLED = 1;
     const DISABLED = 0;
