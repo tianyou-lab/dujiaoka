@@ -10,7 +10,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 /**
- * V免签 / 豆包蛋（VMQ / VPay 协议）支付驱动
+ * V免签 / VPay 协议支付驱动
+ *
+ * 完整部署、配置、测试文档见 docs/V免签部署与接入指南.md
  *
  * 数据库字段映射（复用 pays 表既有字段）：
  *   - merchant_id  => 通讯密钥（key）          数据库里通常填 32 位随机串
@@ -25,7 +27,7 @@ use Illuminate\Support\Facades\Log;
  *
  * 兼容 vwx / vzfb / vwx_check / 微信 / wechat / zfb / alipay 等各种写法。
  *
- * 协议参考（社区惯例，V免签/V免签升级版/豆包蛋通用）：
+ * 协议参考（V免签社区通用）：
  *   createOrder?
  *     payId=<商户订单号>
  *     &type=<1|2>
@@ -226,7 +228,7 @@ class VmqDriver extends AbstractPaymentDriver
 
     public function getDisplayName(): string
     {
-        return 'V免签 / 豆包蛋';
+        return 'V免签';
     }
 
     protected function resolveEndpoint(string $raw): string
