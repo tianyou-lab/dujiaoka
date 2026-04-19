@@ -117,6 +117,7 @@ class OrderController extends BaseController
             }
 
             $totalPrice = 0;
+            $originalTotalPrice = 0;
             $orderItems = [];
 
             // 获取库存模式配置
@@ -193,11 +194,25 @@ class OrderController extends BaseController
                     throw new RuleValidationException("{$goods->gd_name} 最低购买数量为 {$goods->buy_min_num}");
                 }
 
-                // 应用用户等级折扣
-                $originalPrice = $sub->price;
-                $discountedPrice = $originalPrice * $userDiscountRate;
+                // 优先按"用户分组专属价（绝对价）"取价，没有再走会员等级折扣
+                $groupPrice = null;
+                if ($user && $user->group_id) {
+                    $groupPrice = \App\Models\GoodsSubGroupPrice::where('sub_id', $sub->id)
+                        ->where('group_id', $user->group_id)
+                        ->value('price');
+                }
+
+                if ($groupPrice !== null) {
+                    $discountedPrice = (float) $groupPrice;
+                    $originalPrice = (float) $sub->price;
+                } else {
+                    $originalPrice = (float) $sub->price;
+                    $discountedPrice = $originalPrice * $userDiscountRate;
+                }
+
                 $subtotal = $discountedPrice * $item['quantity'];
                 $totalPrice += $subtotal;
+                $originalTotalPrice += $originalPrice * $item['quantity'];
 
                 // 处理自定义字段（含服务端必填校验）
                 $customFields = $item['custom_fields'] ?? [];
@@ -257,9 +272,8 @@ class OrderController extends BaseController
                 }
             }
 
-            // 计算折扣金额
-            $originalTotalPrice = $totalPrice / $userDiscountRate;
-            $userDiscountAmount = $originalTotalPrice - $totalPrice;
+            // 计算折扣金额（基于循环中已累加的原始总价 vs 实际总价；同时兼容旧的会员等级折扣 + 新的分组绝对价）
+            $userDiscountAmount = max(0, round($originalTotalPrice - $totalPrice, 2));
             
             // 处理余额支付
             $balanceUsed = 0;

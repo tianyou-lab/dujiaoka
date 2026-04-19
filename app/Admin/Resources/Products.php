@@ -10,6 +10,7 @@ use App\Models\GoodsSub;
 use App\Models\Pay;
 use App\Models\RemoteServer;
 use App\Models\Carmis;
+use App\Models\UserGroup;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -114,7 +115,7 @@ class Products extends Resource
                                     ->default('默认规格')
                                     ->columnSpan(2),
                                 Forms\Components\TextInput::make('price')
-                                    ->label('售价')
+                                    ->label('默认售价')
                                     ->numeric()
                                     ->prefix('¥')
                                     ->required()
@@ -129,12 +130,40 @@ class Products extends Resource
                                     ->numeric()
                                     ->default(0)
                                     ->columnSpan(1),
+
+                                Forms\Components\Repeater::make('groupPrices')
+                                    ->label('用户分组专属价')
+                                    ->relationship()
+                                    ->schema([
+                                        Forms\Components\Select::make('group_id')
+                                            ->label('用户分组')
+                                            ->options(UserGroup::getActiveGroups()->pluck('name', 'id'))
+                                            ->required()
+                                            ->distinct()
+                                            ->columnSpan(2),
+                                        Forms\Components\TextInput::make('price')
+                                            ->label('该分组专属价（绝对价）')
+                                            ->numeric()
+                                            ->prefix('¥')
+                                            ->required()
+                                            ->columnSpan(2),
+                                    ])
+                                    ->columns(4)
+                                    ->addActionLabel('添加分组价')
+                                    ->itemLabel(fn (array $state) => isset($state['group_id'])
+                                        ? (UserGroup::find($state['group_id'])?->name ?? '未知分组') . ' → ¥' . ($state['price'] ?? '?')
+                                        : '新分组价')
+                                    ->collapsible()
+                                    ->defaultItems(0)
+                                    ->columnSpanFull()
+                                    ->helperText('为指定分组的用户设置该规格的专属价；未设置则该用户按默认售价购买。绝对价直接生效，不再叠加会员等级折扣。'),
                             ])
                             ->columns(5)
                             ->itemLabel(fn (array $state): ?string => $state['name'] ?? null)
                             ->addActionLabel('添加规格')
                             ->minItems(1)
                             ->defaultItems(1)
+                            ->collapsible()
                             ->columnSpanFull(),
 
                     ])

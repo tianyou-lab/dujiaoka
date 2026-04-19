@@ -4,6 +4,7 @@ namespace App\Admin\Resources;
 
 use App\Models\User;
 use App\Models\UserLevel;
+use App\Models\UserGroup;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -55,8 +56,15 @@ class Users extends Resource
                         Select::make('level_id')
                             ->label('用户等级')
                             ->options(UserLevel::getActiveLevels()->pluck('name', 'id'))
-                            ->required(),
-                        
+                            ->required()
+                            ->helperText('按累计消费自动升级'),
+
+                        Select::make('group_id')
+                            ->label('用户分组')
+                            ->options(UserGroup::getActiveGroups()->pluck('name', 'id'))
+                            ->placeholder('未分组')
+                            ->helperText('手动分配，享受商品分组专属价'),
+
                         Select::make('status')
                             ->label('状态')
                             ->options(User::getStatusMap())
@@ -116,6 +124,15 @@ class Users extends Resource
                         'warning' => 'VIP用户',
                         'success' => '钻石用户',
                     ]),
+
+                BadgeColumn::make('group.name')
+                    ->label('分组')
+                    ->default('未分组')
+                    ->color(fn ($record) => $record?->group?->color ? null : 'gray')
+                    ->formatStateUsing(fn ($state) => $state ?: '未分组')
+                    ->extraAttributes(fn ($record) => $record?->group?->color
+                        ? ['style' => 'background-color: ' . $record->group->color . '20; color: ' . $record->group->color . '; border: 1px solid ' . $record->group->color . '40;']
+                        : []),
                 
                 TextColumn::make('balance')
                     ->label('余额')
@@ -154,7 +171,14 @@ class Users extends Resource
                 SelectFilter::make('level_id')
                     ->label('用户等级')
                     ->options(UserLevel::getActiveLevels()->pluck('name', 'id')),
-                
+
+                SelectFilter::make('group_id')
+                    ->label('用户分组')
+                    ->options(UserGroup::getActiveGroups()->pluck('name', 'id'))
+                    ->placeholder('全部')
+                    ->trueLabel('已分组')
+                    ->indicator('分组'),
+
                 SelectFilter::make('status')
                     ->label('状态')
                     ->options(User::getStatusMap()),
@@ -233,26 +257,54 @@ class Users extends Resource
                     ->icon('heroicon-o-check-circle')
                     ->action(function (Collection $records) {
                         $records->each->update(['status' => User::STATUS_ACTIVE]);
-                        
+
                         Notification::make()
                             ->title('批量启用成功')
                             ->success()
                             ->send();
                     }),
-                
+
                 BulkAction::make('disable')
                     ->label('批量禁用')
                     ->icon('heroicon-o-x-circle')
                     ->color('danger')
                     ->action(function (Collection $records) {
                         $records->each->update(['status' => User::STATUS_DISABLED]);
-                        
+
                         Notification::make()
                             ->title('批量禁用成功')
                             ->warning()
                             ->send();
                     }),
-                
+
+                BulkAction::make('assignGroup')
+                    ->label('批量分配分组')
+                    ->icon('heroicon-o-user-group')
+                    ->color('primary')
+                    ->form([
+                        Select::make('group_id')
+                            ->label('目标分组')
+                            ->options(
+                                UserGroup::getActiveGroups()
+                                    ->pluck('name', 'id')
+                                    ->prepend('未分组（清除分组）', '')
+                            )
+                            ->required()
+                            ->placeholder('请选择'),
+                    ])
+                    ->action(function (Collection $records, array $data) {
+                        $groupId = $data['group_id'] === '' ? null : (int) $data['group_id'];
+                        $records->each(fn ($u) => $u->update(['group_id' => $groupId]));
+                        $name = $groupId
+                            ? (UserGroup::find($groupId)?->name ?? '未知')
+                            : '未分组';
+
+                        Notification::make()
+                            ->title('已为 ' . $records->count() . ' 个用户分配分组：' . $name)
+                            ->success()
+                            ->send();
+                    }),
+
                 Tables\Actions\DeleteBulkAction::make(),
             ])
             ->defaultSort('created_at', 'desc');
@@ -271,7 +323,12 @@ class Users extends Resource
 
     public static function getGlobalSearchEloquentQuery(): \Illuminate\Database\Eloquent\Builder
     {
-        return parent::getGlobalSearchEloquentQuery()->with(['level']);
+        return parent::getGlobalSearchEloquentQuery()->with(['level', 'group']);
+    }
+
+    public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        return parent::getEloquentQuery()->with(['level', 'group']);
     }
 
     public static function getGloballySearchableAttributes(): array

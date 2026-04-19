@@ -61,11 +61,30 @@ class CartController extends BaseController
             ? $enabledPays->toArray()
             : $enabledPays->whereIn('id', $goods->payment_limit)->values()->toArray();
 
+        $user = \Illuminate\Support\Facades\Auth::guard('web')->user();
+        $unitPrice = (float) $sub->price;
+        $originalPrice = $unitPrice;
+
+        if ($user && $user->group_id) {
+            $groupPrice = \App\Models\GoodsSubGroupPrice::where('sub_id', $sub->id)
+                ->where('group_id', $user->group_id)
+                ->value('price');
+            if ($groupPrice !== null) {
+                $unitPrice = (float) $groupPrice;
+            } elseif ($user->discount_rate < 1) {
+                $unitPrice = round($unitPrice * (float) $user->discount_rate, 2);
+            }
+        } elseif ($user && $user->discount_rate < 1) {
+            $unitPrice = round($unitPrice * (float) $user->discount_rate, 2);
+        }
+
         return $this->success([
             'goods_id' => $goods->id,
             'sub_id' => $sub->id,
             'name' => "{$goods->gd_name} [{$sub->name}]",
-            'price' => $sub->price,
+            'price' => $unitPrice,
+            'original_price' => $originalPrice,
+            'has_group_price' => $unitPrice < $originalPrice,
             'image' => pictureUrl($goods->picture),
             'stock' => $stock,
             'max_quantity' => min($stock, $goods->buy_limit_num ?: $stock),

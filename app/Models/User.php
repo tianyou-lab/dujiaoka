@@ -20,6 +20,11 @@ class User extends Authenticatable implements MustVerifyEmail
         'password',
         'nickname',
         'phone',
+        'level_id',
+        'group_id',
+        'status',
+        'balance',
+        'total_spent',
         'last_login_at',
         'last_login_ip',
     ];
@@ -37,6 +42,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'last_login_at' => 'datetime',
         'status' => 'integer',
         'level_id' => 'integer',
+        'group_id' => 'integer',
     ];
 
     const STATUS_ACTIVE = 1;
@@ -54,6 +60,17 @@ class User extends Authenticatable implements MustVerifyEmail
     public function level(): BelongsTo
     {
         return $this->belongsTo(UserLevel::class, 'level_id');
+    }
+
+    // 关联用户分组（手动分配）
+    public function group(): BelongsTo
+    {
+        return $this->belongsTo(UserGroup::class, 'group_id');
+    }
+
+    public function getGroupNameAttribute(): ?string
+    {
+        return $this->group?->name;
     }
 
     // 关联订单

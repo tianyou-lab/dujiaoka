@@ -37,6 +37,7 @@ INSERT INTO `permissions` VALUES (13, 'manage_articles', 'admin', now(), now());
 INSERT INTO `permissions` VALUES (14, 'manage_article_categories', 'admin', now(), now());
 INSERT INTO `permissions` VALUES (15, 'manage_email_templates', 'admin', now(), now());
 INSERT INTO `permissions` VALUES (16, 'manage_settings', 'admin', now(), now());
+INSERT INTO `permissions` VALUES (17, 'manage_user_groups', 'admin', now(), now());
 COMMIT;
 
 -- ----------------------------
@@ -119,13 +120,13 @@ CREATE TABLE `role_has_permissions` (
 -- ----------------------------
 BEGIN;
 -- super-admin 拥有全部权限
-INSERT INTO `role_has_permissions` VALUES (1, 1), (2, 1), (3, 1), (4, 1), (5, 1), (6, 1), (7, 1), (8, 1), (9, 1), (10, 1), (11, 1), (12, 1), (13, 1), (14, 1), (15, 1), (16, 1);
+INSERT INTO `role_has_permissions` VALUES (1, 1), (2, 1), (3, 1), (4, 1), (5, 1), (6, 1), (7, 1), (8, 1), (9, 1), (10, 1), (11, 1), (12, 1), (13, 1), (14, 1), (15, 1), (16, 1), (17, 1);
 
 -- admin 拥有除了管理员和角色管理的所有权限
-INSERT INTO `role_has_permissions` VALUES (3, 2), (4, 2), (5, 2), (6, 2), (7, 2), (8, 2), (9, 2), (10, 2), (11, 2), (12, 2), (13, 2), (14, 2), (15, 2), (16, 2);
+INSERT INTO `role_has_permissions` VALUES (3, 2), (4, 2), (5, 2), (6, 2), (7, 2), (8, 2), (9, 2), (10, 2), (11, 2), (12, 2), (13, 2), (14, 2), (15, 2), (16, 2), (17, 2);
 
 -- manager 拥有用户、商店、内容管理权限
-INSERT INTO `role_has_permissions` VALUES (3, 3), (4, 3), (5, 3), (6, 3), (7, 3), (8, 3), (13, 3), (14, 3), (15, 3);
+INSERT INTO `role_has_permissions` VALUES (3, 3), (4, 3), (5, 3), (6, 3), (7, 3), (8, 3), (13, 3), (14, 3), (15, 3), (17, 3);
 
 -- order-processor 拥有订单和库存管理权限
 INSERT INTO `role_has_permissions` VALUES (7, 4), (10, 4), (11, 4);
@@ -160,6 +161,33 @@ INSERT INTO `user_levels` (`id`, `name`, `min_spent`, `discount_rate`, `color`, 
 INSERT INTO `user_levels` (`id`, `name`, `min_spent`, `discount_rate`, `color`, `description`, `sort`, `status`, `created_at`, `updated_at`, `deleted_at`) VALUES (2, '白银会员', 500.00, 0.95, '#c0c0c0', '累计消费满500元可升级', 2, 1, now(), now(), NULL);
 INSERT INTO `user_levels` (`id`, `name`, `min_spent`, `discount_rate`, `color`, `description`, `sort`, `status`, `created_at`, `updated_at`, `deleted_at`) VALUES (3, '黄金会员', 1000.00, 0.92, '#ffd700', '累计消费满1000元可升级', 3, 1, now(), now(), NULL);
 INSERT INTO `user_levels` (`id`, `name`, `min_spent`, `discount_rate`, `color`, `description`, `sort`, `status`, `created_at`, `updated_at`, `deleted_at`) VALUES (4, '钻石会员', 3000.00, 0.88, '#b9f2ff', '累计消费满3000元可升级', 4, 1, now(), now(), NULL);
+COMMIT;
+
+-- ----------------------------
+-- Table structure for user_groups (用户分组：与会员等级解耦，由管理员手动分配，专门用于批发/VIP/推广客户等)
+-- ----------------------------
+DROP TABLE IF EXISTS `user_groups`;
+CREATE TABLE `user_groups` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '分组名称',
+  `description` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '分组说明',
+  `color` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT '#6366f1' COMMENT '分组颜色',
+  `sort` int NOT NULL DEFAULT '0' COMMENT '排序，越小越靠前',
+  `status` tinyint(1) NOT NULL DEFAULT '1' COMMENT '1启用 0禁用',
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_status_sort` (`status`,`sort`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户分组表（手动分配）';
+
+-- ----------------------------
+-- Records of user_groups
+-- ----------------------------
+BEGIN;
+INSERT INTO `user_groups` (`id`, `name`, `description`, `color`, `sort`, `status`, `created_at`, `updated_at`, `deleted_at`) VALUES (1, '批发客户', '批发渠道客户，享受批发价格', '#10b981', 1, 1, now(), now(), NULL);
+INSERT INTO `user_groups` (`id`, `name`, `description`, `color`, `sort`, `status`, `created_at`, `updated_at`, `deleted_at`) VALUES (2, 'VIP 客户', '高价值客户，享受 VIP 专属价格', '#f59e0b', 2, 1, now(), now(), NULL);
+INSERT INTO `user_groups` (`id`, `name`, `description`, `color`, `sort`, `status`, `created_at`, `updated_at`, `deleted_at`) VALUES (3, '推广客户', '渠道推广客户，享受推广价格', '#8b5cf6', 3, 1, now(), now(), NULL);
 COMMIT;
 
 -- ----------------------------
@@ -364,6 +392,28 @@ CREATE TABLE `goods_sub` (
 -- ----------------------------
 BEGIN;
 INSERT INTO `goods_sub` (`id`, `goods_id`, `price`, `name`, `stock`, `sales_volume`, `created_at`, `updated_at`) VALUES (1, 1, 10.00, '默认规格', 1, 0, now(), now());
+COMMIT;
+
+-- ----------------------------
+-- Table structure for goods_sub_group_prices (商品子规格的分组价：sub_id+group_id 唯一)
+-- ----------------------------
+DROP TABLE IF EXISTS `goods_sub_group_prices`;
+CREATE TABLE `goods_sub_group_prices` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `sub_id` int NOT NULL COMMENT '商品子规格 ID（goods_sub.id）',
+  `group_id` bigint unsigned NOT NULL COMMENT '用户分组 ID（user_groups.id）',
+  `price` decimal(10,2) NOT NULL COMMENT '该分组对该子规格的专属绝对价',
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_sub_group` (`sub_id`,`group_id`),
+  KEY `idx_group` (`group_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='商品子规格分组价（绝对价）';
+
+-- ----------------------------
+-- Records of goods_sub_group_prices
+-- ----------------------------
+BEGIN;
 COMMIT;
 
 -- ----------------------------
@@ -623,6 +673,7 @@ CREATE TABLE `users` (
   `balance` decimal(10,2) NOT NULL DEFAULT '0.00',
   `total_spent` decimal(10,2) NOT NULL DEFAULT '0.00',
   `level_id` tinyint unsigned NOT NULL DEFAULT '1',
+  `group_id` bigint unsigned DEFAULT NULL COMMENT '用户分组ID（手动分配，与等级解耦）',
   `status` tinyint NOT NULL DEFAULT '1' COMMENT '1:正常 2:禁用',
   `last_login_at` timestamp NULL DEFAULT NULL,
   `last_login_ip` varchar(45) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -632,7 +683,8 @@ CREATE TABLE `users` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `users_email_unique` (`email`),
   KEY `users_email_status_index` (`email`,`status`),
-  KEY `users_level_id_index` (`level_id`)
+  KEY `users_level_id_index` (`level_id`),
+  KEY `users_group_id_index` (`group_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------
