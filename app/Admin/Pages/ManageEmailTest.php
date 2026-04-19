@@ -105,33 +105,26 @@ class ManageEmailTest extends Page
             app()->forgetInstance('mailer');
             \Illuminate\Support\Facades\Mail::clearResolvedInstances();
 
-            \Log::info('SMTP 测试发件 - 当前生效配置', [
-                'mail.default' => config('mail.default'),
-                'mail.mailers.smtp.host' => config('mail.mailers.smtp.host'),
-                'mail.mailers.smtp.port' => config('mail.mailers.smtp.port'),
-                'mail.mailers.smtp.encryption' => config('mail.mailers.smtp.encryption'),
-                'mail.mailers.smtp.username' => config('mail.mailers.smtp.username'),
-                'mail.mailers.smtp.local_domain' => config('mail.mailers.smtp.local_domain'),
-                'mail.from.address' => config('mail.from.address'),
-                'to' => $to,
-            ]);
-
             $mailer = \Illuminate\Support\Facades\Mail::mailer('smtp');
             $transport = $mailer->getSymfonyTransport();
             if (method_exists($transport, 'setLocalDomain')) {
                 $transport->setLocalDomain($localDomain);
-                \Log::info('SMTP 测试发件 - 强制设置 transport local_domain', ['local_domain' => $localDomain]);
-            }
-            if (method_exists($transport, 'getDebug')) {
-                \Log::info('SMTP 测试发件 - transport 类型', ['class' => get_class($transport)]);
             }
 
-            $mailer->send(['html' => 'email.mail'], ['body' => $body], function ($message) use ($to, $title) {
-                $message->to($to)->subject($title);
-            });
-
-            if (method_exists($transport, 'getDebug')) {
-                \Log::info('SMTP 测试发件 - SMTP 完整流', ['debug' => $transport->getDebug()]);
+            try {
+                $mailer->send(['html' => 'email.mail'], ['body' => $body], function ($message) use ($to, $title) {
+                    $message->to($to)->subject($title);
+                });
+            } catch (\Throwable $sendError) {
+                $debug = method_exists($transport, 'getDebug') ? $transport->getDebug() : '(transport 不支持 debug)';
+                throw new \RuntimeException(
+                    "SMTP 失败: " . $sendError->getMessage() .
+                    "\n\nlocal_domain=" . $localDomain .
+                    "\ntransport=" . get_class($transport) .
+                    "\n\n=== SMTP 完整流 ===\n" . $debug,
+                    0,
+                    $sendError
+                );
             }
 
             Notification::make()
