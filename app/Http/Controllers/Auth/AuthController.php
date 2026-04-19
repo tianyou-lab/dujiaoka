@@ -99,7 +99,17 @@ class AuthController extends Controller
         $user->total_spent = 0;
         $user->save();
 
-        event(new Registered($user));
+        // 注册事件中包含发送邮箱验证邮件的监听器；
+        // 即便邮件已通过 ShouldQueue 投递到队列异步执行，
+        // 这里仍 try/catch 兜底，防止 dispatch 阶段（队列驱动异常等）阻塞注册流程。
+        try {
+            event(new Registered($user));
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('注册后触发 Registered 事件失败，已忽略不阻塞注册', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         Auth::guard('web')->login($user);
         $request->session()->regenerate();

@@ -239,4 +239,12 @@ class User extends Authenticatable implements MustVerifyEmail
             'last_login_ip' => $ip ?? request()->ip(),
         ]);
     }
+
+    /**
+     * Override：使用队列化的验证邮件通知，避免 SMTP 失败阻塞主流程
+     */
+    public function sendEmailVerificationNotification()
+    {
+        $this->notify(new \App\Notifications\QueuedVerifyEmail());
+    }
 }
