@@ -24,9 +24,14 @@ class UnifiedPaymentController extends Controller
      */
     public function gateway(string $driver, string $payway, string $orderSN)
     {
+        $showDetail = config('app.debug') === true || config('app.env') !== 'production';
+
         try {
             if (!$this->paymentManager->hasDriver($driver)) {
-                throw new RuleValidationException(__('dujiaoka.prompt.payment_driver_not_found'));
+                $hint = $showDetail
+                    ? sprintf(' [驱动未注册] driver=%s, 已注册=[%s]', $driver, implode(',', $this->paymentManager->getRegisteredDrivers()))
+                    : '';
+                throw new RuleValidationException(__('dujiaoka.prompt.payment_driver_not_found') . $hint);
             }
 
             $paymentDriver = $this->paymentManager->driver($driver);
@@ -36,19 +41,31 @@ class UnifiedPaymentController extends Controller
             $order = $orderService->detailOrderSN($orderSN);
             
             if (!$order) {
-                throw new RuleValidationException(__('dujiaoka.prompt.order_does_not_exist'));
+                $hint = $showDetail ? sprintf(' [订单查不到] orderSN=%s', $orderSN) : '';
+                throw new RuleValidationException(__('dujiaoka.prompt.order_does_not_exist') . $hint);
             }
 
             $payService = app('App\\Services\\Payment');
             $payGateway = $payService->detail($order->pay_id);
             
             if (!$payGateway) {
-                throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel'));
+                $hint = $showDetail
+                    ? sprintf(' [订单的 pay_id=%s 在 pays 表里没匹配到记录，可能该支付通道已被删除或被禁用]', (string)$order->pay_id)
+                    : '';
+                throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel') . $hint);
             }
 
             // 校验 URL 中的 driver 与订单绑定的支付驱动一致，防止跨驱动接管
             if ($driver !== $payGateway->pay_handleroute) {
-                throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel'));
+                $hint = $showDetail
+                    ? sprintf(
+                        ' [URL 里的 driver=%s 与订单所属支付通道的 pay_handleroute=%s 不一致；请到后台→支付通道，把该通道的「支付处理模块」字段改为 %s]',
+                        $driver,
+                        (string)$payGateway->pay_handleroute,
+                        $driver
+                    )
+                    : '';
+                throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel') . $hint);
             }
 
             return $paymentDriver->gateway($payway, $orderSN, $order, $payGateway);
@@ -59,10 +76,30 @@ class UnifiedPaymentController extends Controller
                 'content' => $exception->getMessage(),
                 'url' => null
             ]);
-        } catch (\Exception $exception) {
+        } catch (\Throwable $exception) {
+            $detail = $showDetail
+                ? sprintf(
+                    ' [%s] %s @ %s:%d',
+                    get_class($exception),
+                    $exception->getMessage(),
+                    $exception->getFile(),
+                    $exception->getLine()
+                )
+                : '';
+
+            try {
+                \Log::error('UnifiedPaymentController gateway error', [
+                    'message' => $exception->getMessage(),
+                    'exception' => get_class($exception),
+                    'file' => $exception->getFile(),
+                    'line' => $exception->getLine(),
+                ]);
+            } catch (\Throwable $ignored) {
+            }
+
             return view('morpho::errors.error', [
                 'title' => __('dujiaoka.prompt.payment_error'),
-                'content' => __('dujiaoka.prompt.system_error'),
+                'content' => __('dujiaoka.prompt.system_error') . $detail,
                 'url' => null
             ]);
         }
