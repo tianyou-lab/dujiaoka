@@ -14,27 +14,101 @@ use GeoIp2\Exception\AddressNotFoundException;
 if (! function_exists('replaceMailTemplate')) {
 
     /**
-     * 替换邮件模板
+     * 替换邮件模板（兼容两套语法）
      *
-     * @param array $template 模板
-     * @param array $data 内容
-     * @return array|false|mixed
+     * 支持的占位符：
+     *   1) 新语法：{{site.name}} / {{order.id}} / {{customer.name}}
+     *              {{order.amount | money}} / {{order.created_at | date}}
+     *              {{#if customer.is_registered}} ... {{/if}}（支持 {{else}}）
+     *   2) 老语法：{order_id} / {product_name} / {webname} ...（扁平 key）
      *
+     * $data 支持两种形态：
+     *   - 嵌套结构：['site' => [...], 'order' => [...], 'customer' => [...]]
+     *   - 扁平结构：['order_id' => 'XX', 'product_name' => 'YY', ...]
+     *     扁平时会自动映射到新的嵌套结构，尽量让老的 {{order.id}} 也能替上。
+     *
+     * @param mixed $template 模板，可以是数组、Emailtpl 模型或 ArrayAccess
+     * @param array $data 替换数据
+     * @return array|false
      */
     function replaceMailTemplate($template = [], $data = [])
     {
         if (!$template) {
             return false;
         }
-        if ($data) {
-            foreach ($data as $key => $val) {
-                $safeVal = e((string)$val);
-                $title = str_replace('{' . $key . '}', $safeVal, isset($title) ? $title : $template['tpl_name']);
-                $content = str_replace('{' . $key . '}', $safeVal, isset($content) ? $content : $template['tpl_content']);
-            }
-            return ['tpl_name' => $title, 'tpl_content' => $content];
+
+        $tplName = '';
+        $tplContent = '';
+        if (is_array($template) || $template instanceof \ArrayAccess) {
+            $tplName = (string)($template['tpl_name'] ?? '');
+            $tplContent = (string)($template['tpl_content'] ?? '');
+        } elseif (is_object($template)) {
+            $tplName = (string)($template->tpl_name ?? '');
+            $tplContent = (string)($template->tpl_content ?? '');
         }
-        return $template;
+
+        if ($tplName === '' && $tplContent === '') {
+            return false;
+        }
+
+        $flat = is_array($data) ? $data : [];
+
+        $hasNested = isset($flat['site']) && is_array($flat['site'])
+            || isset($flat['order']) && is_array($flat['order'])
+            || isset($flat['customer']) && is_array($flat['customer']);
+
+        if ($hasNested) {
+            $context = $flat;
+        } else {
+            $context = [
+                'site' => [
+                    'name' => $flat['webname'] ?? config('app.name'),
+                    'url' => $flat['weburl'] ?? config('app.url'),
+                    'email' => $flat['site_email'] ?? config('mail.from.address'),
+                    'year' => date('Y'),
+                ],
+                'order' => [
+                    'id' => $flat['order_id'] ?? ($flat['ord_id'] ?? ''),
+                    'sn' => $flat['order_id'] ?? ($flat['order_sn'] ?? ''),
+                    'amount' => $flat['ord_price'] ?? ($flat['amount'] ?? 0),
+                    'quantity' => $flat['buy_amount'] ?? ($flat['quantity'] ?? 0),
+                    'status' => $flat['ord_status'] ?? ($flat['status'] ?? ''),
+                    'created_at' => $flat['created_at'] ?? '',
+                    'title' => $flat['ord_title'] ?? ($flat['product_name'] ?? ''),
+                    'goods_summary' => $flat['ord_title'] ?? ($flat['product_name'] ?? ''),
+                    'info' => $flat['ord_info'] ?? '',
+                    'is_paid' => isset($flat['is_paid']) ? (bool)$flat['is_paid'] : false,
+                    'is_failed' => isset($flat['is_failed']) ? (bool)$flat['is_failed'] : false,
+                ],
+                'customer' => [
+                    'email' => $flat['customer_email'] ?? ($flat['email'] ?? ''),
+                    'name' => $flat['customer_name'] ?? '客户',
+                    'is_registered' => isset($flat['is_registered']) ? (bool)$flat['is_registered'] : false,
+                ],
+                'product' => [
+                    'name' => $flat['product_name'] ?? '',
+                ],
+            ];
+        }
+
+        $newTplName = \App\Services\EmailVariableResolver::resolve($tplName, $context);
+        $newTplContent = \App\Services\EmailVariableResolver::resolve($tplContent, $context);
+
+        if ($flat) {
+            foreach ($flat as $key => $val) {
+                if (is_array($val) || is_object($val)) {
+                    continue;
+                }
+                $needle = '{' . $key . '}';
+                if (strpos($newTplName, $needle) !== false || strpos($newTplContent, $needle) !== false) {
+                    $safeVal = (string)$val;
+                    $newTplName = str_replace($needle, $safeVal, $newTplName);
+                    $newTplContent = str_replace($needle, $safeVal, $newTplContent);
+                }
+            }
+        }
+
+        return ['tpl_name' => $newTplName, 'tpl_content' => $newTplContent];
     }
 }
 

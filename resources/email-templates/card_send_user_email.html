@@ -57,6 +57,14 @@
                 </div>
             </div>
 
+            {{#if order.info}}
+            <p style="margin: 20px 0 8px 0; font-weight: 600;">您的卡密信息：</p>
+            <div class="card-info">
+                {{order.info}}
+            </div>
+            <p style="color: #6c757d; font-size: 13px;">请妥善保管以上卡密，如有疑问请联系客服。</p>
+            {{/if}}
+
             {{#if customer.is_registered}}
             <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 16px; border-radius: 6px; margin: 20px 0;">
                 <p style="margin: 0; color: #856404;">🌟 感谢您作为会员的支持！</p>
