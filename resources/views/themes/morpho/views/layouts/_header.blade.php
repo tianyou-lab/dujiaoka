@@ -17,11 +17,11 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     
-    {{-- 主题配置的图标 --}}
+    {{-- 主题配置的图标，未配置时使用站点统一 favicon --}}
     @if(theme_config('favicon'))
         <link rel="icon" type="image/png" href="{{ theme_config('favicon') }}" />
     @else
-        <link rel="icon" type="image/png" href="{{ theme_asset('app-icons/icon-32x32.png') }}" sizes="32x32" />
+        <link rel="icon" type="image/png" href="{{ asset('favicon.png') }}" sizes="64x64" />
     @endif
     
     @if(\request()->isSecure())

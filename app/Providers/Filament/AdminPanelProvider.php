@@ -70,7 +70,7 @@ class AdminPanelProvider extends PanelProvider
             ->brandName(fn () => app(\App\Settings\ShopSettings::class)->title ?? config('app.name', '启航数卡'))
             ->brandLogo(asset('assets/common/images/logo.svg'))
             ->brandLogoHeight('2rem')
-            ->favicon(asset('favicon.ico'))
+            ->favicon(asset('favicon.png'))
             ->navigationGroups([
                 '系统管理',
                 '用户管理',
