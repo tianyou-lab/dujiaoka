@@ -7,6 +7,7 @@ return [
         'section_basic' => '基础信息',
         'section_credentials' => '商户凭据',
         'alipay_cert_section' => '支付宝证书（仅支付宝通道需要）',
+        'vmq_section' => 'V免签 / 豆包蛋 配置（仅 V免签 通道需要）',
     ],
     'fields' => [
         'merchant_id' => '商户 ID',
@@ -43,5 +44,6 @@ return [
         'app_public_cert' => '在支付宝开放平台 → 应用详情 → 开发设置 → 接口加签方式 中下载，文件名形如 appCertPublicKey_2021xxxxxxxxxxxx.crt',
         'alipay_public_cert' => '同一处下载，文件名形如 alipayCertPublicKey_RSA2.crt',
         'alipay_root_cert' => '同一处下载，文件名形如 alipayRootCert.crt',
+        'vmq_section' => 'V免签 / 豆包蛋使用 md5 签名协议，字段映射如下：「商户 ID」= V免签通讯密钥（32 位随机串），「商户密钥」= 监控端 URL（例如 https://tk.doubaodan.com/）。「支付处理模块 pay_handleroute」请填 vmq；微信扫码 payway 用 vwx、支付宝扫码 payway 用 vzfb。',
     ],
 ];
