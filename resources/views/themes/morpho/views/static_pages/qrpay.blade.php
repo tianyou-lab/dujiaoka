@@ -23,7 +23,7 @@
 </main>
 @stop
 @section('js')
-<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="{{ asset('assets/common/js/qrcode.min.js') }}"></script>
 <script>
 new QRCode(document.getElementById("qrcode"), {
     text: @json($qr_code),

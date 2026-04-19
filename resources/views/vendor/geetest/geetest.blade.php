@@ -1,4 +1,4 @@
-<script src="https://cdn.bootcss.com/jquery/2.1.0/jquery.min.js"></script>
+<script src="{{ asset('assets/common/js/jquery-2.1.0.min.js') }}"></script>
 <script src="https://static.geetest.com/static/tools/gt.js"></script>
 <div id="{{ $captchaid }}"></div>
 <p id="wait-{{ $captchaid }}" class="show">loading...</p>
