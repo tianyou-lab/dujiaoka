@@ -8,16 +8,12 @@
  */
 use Illuminate\Support\Facades\Route;
 
-// 支付网关入口
-Route::get('pay/{driver}/{payway}/{orderSN}', 'UnifiedPaymentController@gateway')
-    ->middleware('dujiaoka.pay_gate_way');
-
-// 支付回调统一入口
-Route::post('pay/{driver}/notify', 'UnifiedPaymentController@notify');
-Route::get('pay/{driver}/return', 'UnifiedPaymentController@return');
-
 // --------------------------------------------------------------------------
 // 嵌入式 V免签 专用路由（App 与收银台）
+//
+// ⚠️ 这些具体路由必须声明在通用 pay/{driver}/{payway}/{orderSN} 之前，
+// 否则会被后者吞掉（Laravel 路由按注册顺序匹配），
+// 然后走进 dujiaoka.pay_gate_way 中间件的 Order 校验，直接 422。
 //
 // 所有 POST 接口均**免 CSRF**（安卓 App 无法携带 XSRF-TOKEN）。
 // CSRF 豁免统一在 App\Http\Middleware\VerifyCsrfToken::$except 里声明。
@@ -41,3 +37,15 @@ Route::post('getOrder',    'VmqApiController@getOrder');
 Route::post('appHeart',    'VmqApiController@appHeart');
 Route::post('appPush',     'VmqApiController@appPush');
 Route::post('getState',    'VmqApiController@getState');
+
+// --------------------------------------------------------------------------
+// 通用支付入口（放在具体路由后面，避免吞掉 /pay/vmq/cashier/* 等）
+// --------------------------------------------------------------------------
+
+// 支付网关入口
+Route::get('pay/{driver}/{payway}/{orderSN}', 'UnifiedPaymentController@gateway')
+    ->middleware('dujiaoka.pay_gate_way');
+
+// 支付回调统一入口
+Route::post('pay/{driver}/notify', 'UnifiedPaymentController@notify');
+Route::get('pay/{driver}/return', 'UnifiedPaymentController@return');
