@@ -11,15 +11,15 @@ use Filament\Tables;
 use Filament\Tables\Table;
 
 /**
- * V免签 精确金额收款码（高级，可选）
+ * V免签 精确金额收款码（内部兼容保留，不在后台导航显示）
  *
- * 与 V免签 原版一致：绝大多数站长只需要在「V免签 全局设置」里填 1 个微信码 + 1 个支付宝码即可，
- * 系统会通过金额错位区分每一单，不必按金额预置码。
+ * 与 V免签 原版一致：只需在「V免签 全局设置」里填 1 个微信码 + 1 个支付宝码即可，
+ * 系统通过金额错位区分每一单。
  *
- * 本页只服务于高级场景：
- *   - 某些商户需要给「固定金额」投放专用收款二维码（例如多店铺分账、内部 Bug 排查）
- *   - 录入后会覆盖全局收款码，仅对命中的「类型+金额」生效
- * 如果你不确定是否需要使用这里，请直接去「V免签 全局设置」配置两个收款码即可。
+ * 这个 Resource 类保留但**不再对外暴露**（shouldRegisterNavigation + canViewAny 均返回 false），
+ * 以便：
+ *   - 数据库里的 vmq_qrcodes 表继续维持「命中金额覆盖全局」的既有行为
+ *   - 未来确有精细化需求可通过代码直接操作，或重新开启导航
  */
 class VmqQrcodes extends Resource
 {
@@ -30,6 +30,11 @@ class VmqQrcodes extends Resource
     protected static ?string $navigationGroup = '支付配置';
 
     protected static ?int $navigationSort = 12;
+
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
 
     public static function getNavigationLabel(): string
     {
@@ -155,10 +160,10 @@ class VmqQrcodes extends Resource
 
     public static function canViewAny(): bool
     {
-        return auth('admin')->user()?->can('manage_payments') || auth('admin')->user()?->hasRole('super-admin') || false;
+        return false;
     }
 
-    public static function canCreate(): bool { return static::canViewAny(); }
-    public static function canEdit($record): bool { return static::canViewAny(); }
-    public static function canDelete($record): bool { return static::canViewAny(); }
+    public static function canCreate(): bool { return false; }
+    public static function canEdit($record): bool { return false; }
+    public static function canDelete($record): bool { return false; }
 }
