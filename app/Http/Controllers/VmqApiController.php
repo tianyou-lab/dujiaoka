@@ -420,9 +420,17 @@ class VmqApiController extends Controller
 
         $closeMin = (int) VmqSetting::get('close_minutes', '10');
 
+        // 检查是否已配置对应类型的收款码（给收银台做降级提示用）
+        $hasPayUrl = $vmqOrder->pay_url !== '';
+        if (!$hasPayUrl) {
+            $settingKey = (int) $vmqOrder->type === 2 ? 'zfb_pay_url' : 'wx_pay_url';
+            $hasPayUrl  = (string) VmqSetting::get($settingKey, '') !== '';
+        }
+
         return view('vmq.cashier', [
-            'order'    => $vmqOrder,
-            'closeMin' => $closeMin,
+            'order'     => $vmqOrder,
+            'closeMin'  => $closeMin,
+            'hasPayUrl' => $hasPayUrl,
         ]);
     }
 
@@ -437,8 +445,18 @@ class VmqApiController extends Controller
             abort(404);
         }
 
-        $content = $vmqOrder->pay_url !== '' ? $vmqOrder->pay_url
-            : sprintf('VMQ|%s|%s|%s', $vmqOrder->type, $vmqOrder->really_price, $vmqOrder->vmq_order_id);
+        // 二维码内容选择优先级：
+        //   1) 订单本身的 pay_url（下单时已从 VmqQrcode 或全局收款码解析好）
+        //   2) 当前全局 wx_pay_url / zfb_pay_url（兼容管理员下单后才配置收款码的场景）
+        //   3) 文本码 VMQ|type|price|orderId（仅供调试，实际用户无法扫成功）
+        $content = (string) $vmqOrder->pay_url;
+        if ($content === '') {
+            $settingKey = (int) $vmqOrder->type === 2 ? 'zfb_pay_url' : 'wx_pay_url';
+            $content    = (string) VmqSetting::get($settingKey, '');
+        }
+        if ($content === '') {
+            $content = sprintf('VMQ|%s|%s|%s', $vmqOrder->type, $vmqOrder->really_price, $vmqOrder->vmq_order_id);
+        }
 
         try {
             $png = \SimpleSoftwareIO\QrCode\Facades\QrCode::format('png')

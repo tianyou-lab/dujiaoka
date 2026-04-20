@@ -136,6 +136,12 @@
             监控端 App 当前离线，到账可能延迟。请确认安卓 V免签 App 正在后台运行。
         </div>
 
+        @if(!($hasPayUrl ?? true))
+        <div class="offline-warn" style="display:block;background:#fef2f2;border-color:#fecaca;color:#b91c1c;">
+            管理员尚未在「V免签 全局设置」配置 {{ $order->type == \App\Models\VmqPayOrder::TYPE_WECHAT ? '微信' : '支付宝' }} 收款码，二维码无法扫码到账。请联系站长。
+        </div>
+        @endif
+
         <div class="price"><span class="unit">￥</span>{{ number_format((float) $order->really_price, 2, '.', '') }}</div>
 
         @if(bccomp((string) $order->really_price, (string) $order->price, 2) !== 0)

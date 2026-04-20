@@ -11,10 +11,15 @@ use Filament\Tables;
 use Filament\Tables\Table;
 
 /**
- * V免签 固定金额收款码管理
+ * V免签 精确金额收款码（高级，可选）
  *
- * 当命中 type + price 的启用收款码时，支付页会直接使用这里配置的 pay_url 生成二维码；
- * 否则走系统自动金额错位（is_auto=1）。
+ * 与 V免签 原版一致：绝大多数站长只需要在「V免签 全局设置」里填 1 个微信码 + 1 个支付宝码即可，
+ * 系统会通过金额错位区分每一单，不必按金额预置码。
+ *
+ * 本页只服务于高级场景：
+ *   - 某些商户需要给「固定金额」投放专用收款二维码（例如多店铺分账、内部 Bug 排查）
+ *   - 录入后会覆盖全局收款码，仅对命中的「类型+金额」生效
+ * 如果你不确定是否需要使用这里，请直接去「V免签 全局设置」配置两个收款码即可。
  */
 class VmqQrcodes extends Resource
 {
@@ -24,28 +29,31 @@ class VmqQrcodes extends Resource
 
     protected static ?string $navigationGroup = '支付配置';
 
-    protected static ?int $navigationSort = 10;
+    protected static ?int $navigationSort = 12;
 
     public static function getNavigationLabel(): string
     {
-        return 'V免签 收款码';
+        return 'V免签 精确金额收款码（高级）';
     }
 
     public static function getModelLabel(): string
     {
-        return 'V免签 收款码';
+        return 'V免签 精确金额收款码';
     }
 
     public static function getPluralModelLabel(): string
     {
-        return 'V免签 收款码';
+        return 'V免签 精确金额收款码';
     }
 
     public static function form(Form $form): Form
     {
         return $form->schema([
-            Forms\Components\Section::make('收款码信息')
-                ->description('给指定金额+支付类型预置专用收款二维码。当用户付款金额命中此组合时，将直接使用此处的 pay_url 生成二维码，而不是走金额错位。')
+            Forms\Components\Section::make('精确金额收款码')
+                ->description(new \Illuminate\Support\HtmlString(
+                    '<p style="margin:0;color:#b45309;"><strong>大多数用户不需要使用这里</strong>——请直接到「V免签 全局设置」填 1 个微信码 + 1 个支付宝码。</p>'
+                    . '<p style="margin:8px 0 0 0;">仅当你需要给某个<strong>固定金额</strong>投放<strong>独立的收款二维码</strong>时才在这里新增；命中后会覆盖全局收款码，只对此「类型+金额」组合生效。</p>'
+                ))
                 ->schema([
                     Forms\Components\Grid::make(2)->schema([
                         Forms\Components\Select::make('type')
@@ -59,12 +67,15 @@ class VmqQrcodes extends Resource
                             ->step(0.01)
                             ->minValue(0.01)
                             ->required()
-                            ->helperText('同一「类型+金额」只能配置一条'),
+                            ->helperText('同一「类型+金额」只能配置一条；如果你想对所有金额生效，请到「V免签 全局设置」。'),
                     ]),
 
                     Forms\Components\Textarea::make('pay_url')
                         ->label('扫码支付链接 / 收款二维码内容')
-                        ->helperText('粘贴微信/支付宝个人收款码的二维码解析内容（例如 wxp://f2f0xxxx 或 https://qr.alipay.com/xxxx）')
+                        ->helperText(new \Illuminate\Support\HtmlString(
+                            '粘贴微信/支付宝个人收款码的二维码解析结果（例如 <code>wxp://f2f0xxxx</code> 或 <code>https://qr.alipay.com/xxxx</code>）。<br>'
+                            . '在线解析工具：<a href="https://www.sojson.com/qr/deqr.html" target="_blank" rel="noopener">https://www.sojson.com/qr/deqr.html</a>'
+                        ))
                         ->required()
                         ->rows(3),
 

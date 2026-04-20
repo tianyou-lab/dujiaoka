@@ -104,13 +104,22 @@ class VmqDriver extends AbstractPaymentDriver
 
             $reallyPrice = number_format($realFen / 100, 2, '.', '');
 
-            // 尝试命中固定金额收款码（可选）
+            // 支付码 URL 选择优先级：
+            //   1) 按「类型+金额」命中的 VmqQrcode（精确收款码柜台，可选）
+            //   2) VmqSetting 全局收款码（wx_pay_url / zfb_pay_url，跟 V免签 原版一致）
+            //   3) 留空 → 前端二维码回退成「VMQ|type|price|orderId」文本码
             $fixed = VmqQrcode::where('type', $type)
                 ->where('price', $reallyPrice)
                 ->where('enable', 1)
                 ->first();
-            $payUrl = $fixed ? (string) $fixed->pay_url : '';
-            $isAuto = $fixed ? 0 : 1;
+
+            if ($fixed) {
+                $payUrl = (string) $fixed->pay_url;
+            } else {
+                $settingKey = $type === self::TYPE_ALIPAY ? 'zfb_pay_url' : 'wx_pay_url';
+                $payUrl = (string) VmqSetting::get($settingKey, '');
+            }
+            $isAuto = $payUrl === '' ? 1 : 0;
 
             VmqPayOrder::create([
                 'order_sn'     => $order->order_sn,

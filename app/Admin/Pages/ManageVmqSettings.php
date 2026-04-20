@@ -39,6 +39,8 @@ class ManageVmqSettings extends Page
             'close_minutes'  => (int)    VmqSetting::get('close_minutes', '10'),
             'pay_qf'         => (int)    VmqSetting::get('pay_qf', '1'),
             'heart_timeout'  => (int)    VmqSetting::get('heart_timeout', '60'),
+            'wx_pay_url'     => (string) VmqSetting::get('wx_pay_url', ''),
+            'zfb_pay_url'    => (string) VmqSetting::get('zfb_pay_url', ''),
             'last_heart'     => (int)    VmqSetting::get('last_heart', '0'),
             'last_pay'       => (int)    VmqSetting::get('last_pay', '0'),
             'jk_state'       => (string) VmqSetting::get('jk_state', '0'),
@@ -96,6 +98,26 @@ class ManageVmqSettings extends Page
                             ),
                     ]),
 
+                Forms\Components\Section::make('全局收款码')
+                    ->description('与 V免签 原版一致：只需配置 1 个微信收款码 + 1 个支付宝收款码。订单通过「金额错位」区分，不需要按金额建多个码。')
+                    ->schema([
+                        Forms\Components\Textarea::make('wx_pay_url')
+                            ->label('微信收款码内容')
+                            ->rows(2)
+                            ->helperText(new \Illuminate\Support\HtmlString(
+                                '粘贴微信个人收款码的二维码解析结果，例如 <code>wxp://f2f0xxxx...</code>。<br>'
+                                . '在线解析工具：<a href="https://www.sojson.com/qr/deqr.html" target="_blank" rel="noopener">https://www.sojson.com/qr/deqr.html</a>。留空则回退到金额+订单号文本码。'
+                            )),
+
+                        Forms\Components\Textarea::make('zfb_pay_url')
+                            ->label('支付宝收款码内容')
+                            ->rows(2)
+                            ->helperText(new \Illuminate\Support\HtmlString(
+                                '粘贴支付宝个人收款码的二维码解析结果，例如 <code>https://qr.alipay.com/xxxx</code>。<br>'
+                                . '在线解析工具：<a href="https://www.sojson.com/qr/deqr.html" target="_blank" rel="noopener">https://www.sojson.com/qr/deqr.html</a>。留空则回退到金额+订单号文本码。'
+                            )),
+                    ]),
+
                 Forms\Components\Section::make('订单与金额策略')
                     ->schema([
                         Forms\Components\Grid::make(2)->schema([
@@ -140,6 +162,8 @@ class ManageVmqSettings extends Page
         VmqSetting::put('close_minutes', (string) ($data['close_minutes'] ?? 10));
         VmqSetting::put('pay_qf',        (string) ($data['pay_qf'] ?? 1));
         VmqSetting::put('heart_timeout', (string) ($data['heart_timeout'] ?? 60));
+        VmqSetting::put('wx_pay_url',    (string) ($data['wx_pay_url'] ?? ''));
+        VmqSetting::put('zfb_pay_url',   (string) ($data['zfb_pay_url'] ?? ''));
 
         Notification::make()
             ->title('V免签 全局设置已保存')

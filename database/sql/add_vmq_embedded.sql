@@ -71,7 +71,9 @@ INSERT IGNORE INTO `vmq_settings` (`setting_key`, `setting_val`, `updated_at`) V
   ('last_heart',        '0',      NOW()),  -- App 最后一次心跳时间（unix 秒）
   ('last_pay',          '0',      NOW()),  -- App 最后一次推送到账时间（unix 秒）
   ('jk_state',          '0',      NOW()),  -- 监控 App 在线状态：1=在线 0=离线
-  ('enable',            '1',      NOW());  -- V免签 全局开关：1=启用 0=停用
+  ('enable',            '1',      NOW()),  -- V免签 全局开关：1=启用 0=停用
+  ('wx_pay_url',        '',       NOW()),  -- 全局微信收款码（wxp:// 或解析出的链接）
+  ('zfb_pay_url',       '',       NOW());  -- 全局支付宝收款码（https://qr.alipay.com/...）
 
 -- -----------------------------------------------------------------------------
 -- 4. V免签 固定金额收款码表：给特定金额配置专用收款二维码
