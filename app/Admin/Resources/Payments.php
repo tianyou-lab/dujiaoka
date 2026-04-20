@@ -137,7 +137,7 @@ class Payments extends Resource
                                     <li><strong>支付标识 pay_check</strong>：微信扫码填 <code>vwx</code>，支付宝扫码填 <code>vzfb</code></li>
                                     <li><strong>支付方式</strong> 选「扫码」</li>
                                     <li><strong>商户 ID / 商户密钥 / 商户 KEY</strong>：三项留空即可（嵌入式模式不使用）</li>
-                                    <li>到 <code>支付配置 → V免签 全局设置</code> 配置「通讯密钥」，并在安卓 App 里填入本站 URL <code>' . url('/') . '</code> 与同一串密钥</li>
+                                    <li>到 <code>支付配置 → V免签 全局设置</code> 配置「通讯密钥」，并在安卓 App 里填入本站 URL <code>https://xxxxxxx.com</code>（替换成你的真实发卡站域名）与同一串密钥</li>
                                     <li>（可选）到 <code>V免签 → 收款码管理</code> 上传固定金额的微信/支付宝收款码</li>
                                 </ol>
                                 <p style="margin:10px 0 0 0;color:#b45309;"><strong>安全提示</strong>：通讯密钥泄露后任何人都可伪造到账，请妥善保管；本站自动对 <code>/appHeart</code>、<code>/appPush</code>、<code>/createOrder</code> 等接口免 CSRF，但仍然通过 MD5 签名校验。</p>'
