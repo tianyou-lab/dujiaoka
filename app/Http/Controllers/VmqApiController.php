@@ -436,7 +436,15 @@ class VmqApiController extends Controller
 
     /**
      * GET /pay/vmq/qr/{orderSN}
-     * 返回二维码 PNG 图片；内容优先使用 pay_url，否则退化为金额+订单号的文本
+     *
+     * 返回二维码图片。内容优先使用 pay_url，否则退化为金额+订单号的文本。
+     *
+     * 输出策略：
+     *   - 默认输出 SVG（纯 PHP 渲染，不依赖 ext-imagick，兼容任意 PHP 环境）
+     *   - 仅当服务器安装了 ext-imagick 时才回退到 PNG（保留历史行为）
+     *   - SVG 浏览器 <img src> 可直接显示，扫码效果与 PNG 等价
+     *
+     * 之前版本只走 PNG，若服务器未安装 imagick 会抛异常 -> 500 -> 收银台二维码永远加载不出来。
      */
     public function qr(string $orderSN)
     {
@@ -458,20 +466,57 @@ class VmqApiController extends Controller
             $content = sprintf('VMQ|%s|%s|%s', $vmqOrder->type, $vmqOrder->really_price, $vmqOrder->vmq_order_id);
         }
 
+        $useImagick = extension_loaded('imagick');
+
         try {
-            $png = \SimpleSoftwareIO\QrCode\Facades\QrCode::format('png')
-                ->size(300)
+            $builder = \SimpleSoftwareIO\QrCode\Facades\QrCode::size(300)
                 ->margin(1)
-                ->errorCorrection('M')
-                ->generate($content);
-            return response($png, 200, [
-                'Content-Type'  => 'image/png',
+                ->errorCorrection('M');
+
+            if ($useImagick) {
+                $png = $builder->format('png')->generate($content);
+                return response($png, 200, [
+                    'Content-Type'  => 'image/png',
+                    'Cache-Control' => 'no-cache, no-store, must-revalidate',
+                ]);
+            }
+
+            $svg = $builder->format('svg')->generate($content);
+            return response($svg, 200, [
+                'Content-Type'  => 'image/svg+xml; charset=utf-8',
                 'Cache-Control' => 'no-cache, no-store, must-revalidate',
             ]);
         } catch (\Throwable $e) {
-            Log::error('V免签 二维码生成失败', ['msg' => $e->getMessage()]);
-            abort(500, 'QR generation failed');
+            Log::error('V免签 二维码生成失败', [
+                'msg'     => $e->getMessage(),
+                'imagick' => $useImagick,
+            ]);
+
+            // 兜底：返回一张带报错提示的占位 SVG，避免前端只显示 alt 文本
+            $fallback = $this->fallbackQrSvg('二维码生成失败，请联系站长');
+            return response($fallback, 200, [
+                'Content-Type'  => 'image/svg+xml; charset=utf-8',
+                'Cache-Control' => 'no-cache, no-store, must-revalidate',
+            ]);
         }
+    }
+
+    /**
+     * 生成一张 300x300 的占位 SVG，在二维码渲染异常时兜底显示
+     */
+    protected function fallbackQrSvg(string $message): string
+    {
+        $escaped = htmlspecialchars($message, ENT_QUOTES | ENT_XML1, 'UTF-8');
+        return <<<SVG
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">
+  <rect width="300" height="300" fill="#f8fafc"/>
+  <rect x="1" y="1" width="298" height="298" fill="none" stroke="#cbd5e1" stroke-dasharray="6,6"/>
+  <text x="150" y="150" text-anchor="middle" dominant-baseline="middle"
+        font-family="-apple-system,Segoe UI,PingFang SC,Microsoft YaHei,sans-serif"
+        font-size="16" fill="#ef4444">{$escaped}</text>
+</svg>
+SVG;
     }
 
     /**
