@@ -542,7 +542,7 @@
 </style>
 @stop
 @section('js')
-<script src="{{ asset('assets/morpho/js/payment-icons.js') }}"></script>
+<script src="{{ asset('assets/morpho/js/payment-icons.js') }}?v={{ @filemtime(public_path('assets/morpho/js/payment-icons.js')) ?: time() }}"></script>
 <script>
             @if(!empty($buy_prompt))
             var myModal = new bootstrap.Modal(document.getElementById('staticBackdrop'))
