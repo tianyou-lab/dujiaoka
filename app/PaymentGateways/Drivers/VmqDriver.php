@@ -147,10 +147,17 @@ class VmqDriver extends AbstractPaymentDriver
                 'message'   => $e->getMessage(),
                 'file'      => $e->getFile(),
                 'line'      => $e->getLine(),
+                'trace'     => $e->getTraceAsString(),
             ]);
 
-            $showDetail = config('app.debug') === true || config('app.env') !== 'production';
-            $detail = $showDetail ? sprintf(' [%s] %s @ %s:%d', get_class($e), $e->getMessage(), $e->getFile(), $e->getLine()) : '';
+            // 诊断信息始终显示：这里仅暴露异常 class + message + file:line，无凭证泄露风险
+            $detail = sprintf(
+                ' [%s] %s @ %s:%d',
+                get_class($e),
+                $e->getMessage(),
+                basename($e->getFile()),
+                $e->getLine()
+            );
 
             return $this->err(__('dujiaoka.prompt.abnormal_payment_channel') . $detail);
         }
