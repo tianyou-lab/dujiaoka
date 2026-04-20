@@ -22,43 +22,57 @@ class PaymentIcons {
     this.init();
   }
 
-  init() {
-    // 处理商品页面的支付方式
-    const payments = document.querySelectorAll('.payments');
-    payments.forEach(payment => {
-      const type = payment.dataset.type;
-      const svgContainer = payment.querySelector('.paymentsvg');
-      
-      if (!svgContainer) return;
+  resolveIconKey(type) {
+    if (!type) return 'other';
 
-      let icon = this.icons.other;
-      
-      for (const [key, svg] of Object.entries(this.icons)) {
-        if (type.includes(key)) {
-          icon = svg;
-          break;
+    const normalized = String(type).toLowerCase();
+
+    // aliasMap: 图标 key -> 可触发该图标的关键字数组（全部小写，中文保持原样——中文 toLowerCase 不变）
+    // 注意顺序：越具体/越长的别名越靠前，避免 "paypal" 被 "pay" 误中；"alipay" 不要被 "pal" 抢走
+    const aliasMap = {
+      paypal:   ['paypal'],
+      alipay:   ['zfbf2f', 'alipayscan', 'aliweb', 'aliwap', 'alipay', 'vzfb', 'zfb', '支付宝'],
+      wx:       ['wechatpay', 'wechat', 'wxpay', 'wxscan', 'wxf2f', 'vwx', 'wx', '微信'],
+      wescan:   ['wescan'],
+      qq:       ['qqpay', 'qqwallet', 'qq'],
+      usdt:     ['usdt', 'tether'],
+      usdc:     ['usdc'],
+      trx:      ['trx', 'tron', '波场'],
+      eth:      ['eth', 'ethereum', '以太'],
+      bnb:      ['bnb', 'binance', '币安'],
+      okb:      ['okb', 'okx'],
+      polygon:  ['polygon', 'matic'],
+      stripe:   ['stripe'],
+      coinbase: ['coinbase'],
+    };
+
+    for (const [iconKey, aliases] of Object.entries(aliasMap)) {
+      for (const alias of aliases) {
+        if (normalized.includes(alias)) {
+          return iconKey;
         }
       }
+    }
 
-      svgContainer.innerHTML = icon;
+    return 'other';
+  }
+
+  renderOne(container, type) {
+    const iconKey = this.resolveIconKey(type);
+    container.innerHTML = this.icons[iconKey] || this.icons.other;
+  }
+
+  init() {
+    // 兼容：商品页面旧结构（`.payments > .paymentsvg`）
+    document.querySelectorAll('.payments').forEach(payment => {
+      const svgContainer = payment.querySelector('.paymentsvg');
+      if (!svgContainer) return;
+      this.renderOne(svgContainer, payment.dataset.type);
     });
 
-    // 处理购物车页面的支付方式
-    const cartPayments = document.querySelectorAll('.paymentsvg[data-type]');
-    cartPayments.forEach(container => {
-      const type = container.dataset.type;
-      if (!type) return;
-
-      let icon = this.icons.other;
-      
-      for (const [key, svg] of Object.entries(this.icons)) {
-        if (type.toLowerCase().includes(key)) {
-          icon = svg;
-          break;
-        }
-      }
-
-      container.innerHTML = icon;
+    // 主流：购物车/结算等页面直接写 `.paymentsvg[data-type]`
+    document.querySelectorAll('.paymentsvg[data-type]').forEach(container => {
+      this.renderOne(container, container.dataset.type);
     });
   }
 }
