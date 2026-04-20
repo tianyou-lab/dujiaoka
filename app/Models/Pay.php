@@ -72,15 +72,38 @@ class Pay extends BaseModel
         return $query->whereIn('pay_client', [$client, self::CLIENT_ALL]);
     }
 
+    /**
+     * 这些字段在老版表结构里声明为 NOT NULL（无默认值）。
+     * Laravel 的 ConvertEmptyStringsToNull 中间件会把表单空输入改成 null，
+     * 这里统一在保存前回填空字符串，避免清空 merchant_key / merchant_pem
+     * 等字段时抛 1048 Integrity constraint violation。
+     */
+    protected static array $stringNullFallback = [
+        'merchant_id',
+        'merchant_key',
+        'merchant_pem',
+        'app_public_cert',
+        'alipay_public_cert',
+        'alipay_root_cert',
+    ];
+
     protected static function boot()
     {
         parent::boot();
-        
+
+        static::saving(function (self $pay) {
+            foreach (self::$stringNullFallback as $column) {
+                if ($pay->isDirty($column) && is_null($pay->{$column})) {
+                    $pay->{$column} = '';
+                }
+            }
+        });
+
         static::updated(function ($pay) {
             CacheManager::forgetPayMethod($pay->id);
             CacheManager::forgetPayMethods();
         });
-        
+
         static::deleted(function ($pay) {
             CacheManager::forgetPayMethod($pay->id);
             CacheManager::forgetPayMethods();
