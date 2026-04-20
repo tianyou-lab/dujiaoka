@@ -1,321 +1,248 @@
-# V 免签 部署与接入完整指南
+# V 免签 部署与接入指南（嵌入式版）
 
-适用本项目（dujiaoka）从 0 到成功收款的全部操作，读完就能跑。
+> 适用 dujiaoka-main（本项目）**自 v2.0 起**内置的 V 免签监控端。
+> **一台服务器 + 一部安卓手机即可**，不再需要独立部署 vmqphp/Vmq 监控端。
 
 ---
 
-## 0. 为什么需要 V 免签
+## 0. 嵌入式 V 免签 是什么
 
-V 免签（VMQ，又叫"个人免签约收款"）是用一台**你自己的手机**+**一台监控端服务器**，模拟个人用户的微信、支付宝收款到账通知，把个人账户当成商户号来使用。
+传统 V 免签需要三块东西：主站、独立的监控端（vmqphp 等）、监控 App。
+嵌入式版把「监控端」的所有接口直接内置进 dujiaoka，省掉一台服务器：
 
-系统分成三块，**缺一不可**：
-
-| 模块 | 部署在哪 | 作用 |
+| 模块 | 部署位置 | 作用 |
 | --- | --- | --- |
-| dujiaoka（本项目） | 你的 Web 服务器 | 下单、跳转、接收回调、发货 |
-| V 免签监控端（vmqphp / vmq / vmqfox 等） | 一台**独立**的 Web 服务器或子域名 | 生成二维码、接收监控 App 的推送、回调商户 |
-| V 免签监控 App（VmqApk） | 一台安卓手机或模拟器 | 常驻运行，监听微信/支付宝到账 |
+| dujiaoka 主站（含 V 免签接口） | 你的 Web 服务器 | 下单、收银台、接收 App 推送、发货 |
+| V 免签监控 App（VmqApk） | 一部安卓手机 | 常驻运行，监听微信/支付宝到账后 `POST /appPush` |
 
-> 重要：**监控端**和 **dujiaoka** 不是一个东西，**不能部署在同一个域名/路径**，否则就会像你看到的 `/createOrder` 404 那样冲突。
-
----
-
-## 1. 选版本
-
-V 免签有多个社区分支，协议大同小异。建议按推荐顺序选：
-
-1. **szvone/vmqphp**（PHP 老版）—— 文档多、生态最稳定、配合本项目已验证
-2. **szvone/Vmq**（Java 老版）—— 一样稳定，部署需要 JDK
-3. **vmqfox-backend**（ThinkPHP 8 重构版，RESTful）—— 新，路径略有不同
-4. **Vmq-Go**（Go 重写版）—— 低内存，ARM 小机利器
-
-**本项目（commit d4e32c1 起）的驱动完全按 V 免签协议编写**（`/createOrder` + md5(payId+param+type+price+key) 签名）。因此**首选 `szvone/vmqphp` 或 `szvone/Vmq`**，其它版本需要对方保持向后兼容。
+没错，只需要**一台服务器 + 一部手机**，没有第三方服务商，零手续费，到账 1 对 1。
 
 ---
 
-## 2. 准备工作
+## 1. 升级前数据备份
 
-- 一台 **独立** 可访问的 Web 服务器或子域名（例如 `https://vmq.your-site.com/`）
-  - **不能**用 dujiaoka 的主域名，必须是不同主机名或子域名
-  - 建议用 HTTPS（微信/支付宝收款回调不受 HTTPS 限制，但你的回调地址 `/pay/vmq/notify` 在 dujiaoka 这边如果用 HTTPS，监控端访问时不能有证书错误）
-- 一台 **安卓手机或模拟器**（用来装监控 App，7 天也不熄屏、不杀后台）
-- 一个干净的**个人微信**+**个人支付宝**账号，绑定你想收钱的银行卡
-- PHP 7.x / 8.x + MySQL + Nginx（装 vmqphp 用）；装 Java 版就需要 JDK 8
-
----
-
-## 3. 下载监控端（以 vmqphp 为例）
-
-### 方式 A：Git 克隆（推荐）
+嵌入式方案会新建 4 张表并修改 `pays.pay_handleroute`。升级前强烈建议：
 
 ```bash
-cd /var/www && \
-git clone https://github.com/szvone/vmqphp.git vmq
+cd /var/www/dujiaoka
+php artisan down
+mysqldump -u你的用户 -p你的密码 你的库名 > /tmp/dujiaoka_before_vmq.sql
 ```
-
-如果 GitHub 在你服务器上慢，换 gitee：
-
-```bash
-cd /var/www && \
-git clone https://gitee.com/isoundy/vmq.git vmq
-```
-
-### 方式 B：直接下载压缩包
-
-- GitHub Release：<https://github.com/szvone/vmqphp/releases>
-- 解压到 `/var/www/vmq`，保证 `public` 是 Web 入口
 
 ---
 
-## 4. 部署监控端（vmqphp）
+## 2. 执行数据库升级脚本
 
-### 4.1 安装依赖
+项目仓库已内置升级 SQL：`database/sql/add_vmq_embedded.sql`。
 
 ```bash
-cd /var/www/vmq && \
-composer install --no-dev --optimize-autoloader
+cd /var/www/dujiaoka
+mysql -u你的用户 -p你的密码 你的库名 < database/sql/add_vmq_embedded.sql
 ```
 
-（如果没装 composer：`curl -sS https://getcomposer.org/installer | php && mv composer.phar /usr/local/bin/composer`）
+脚本做这几件事（**完全幂等，可以重复执行**）：
 
-### 4.2 建库 & 配置
+1. 创建 `vmq_pay_orders`（V 免签内部订单）
+2. 创建 `vmq_tmp_prices`（金额错位锁，防并发撞车）
+3. 创建 `vmq_settings`（全局通讯密钥、超时、心跳等）—— 已存在则不会重置任何已有设置
+4. 创建 `vmq_qrcodes`（固定金额收款码，选用）
+5. 仅把**原本 `pay_handleroute='vpay'` 的 vwx / vzfb** 记录迁移到 `pay_handleroute='vmq'`；其他通道不动
+
+> 注意：脚本**不会 DROP 任何表**，不会清空 `vmq_settings.key`，也不会覆盖管理员已经填好的通讯密钥，可放心在生产环境多次执行。
+
+执行完检查一下：
+
+```bash
+mysql -u用户 -p密码 -e "SHOW TABLES LIKE 'vmq_%'" 库名
+```
+
+应能看到 4 张新表。
+
+---
+
+## 3. 清缓存 & 拉起来
+
+```bash
+cd /var/www/dujiaoka
+composer dump-autoload -o
+php artisan optimize:clear
+php artisan filament:cache-components
+php artisan up
+```
+
+---
+
+## 4. 后台基础配置
+
+### 4.1 生成通讯密钥
+
+登录后台：
+
+* **支付配置 → V 免签 全局设置**
+
+做 3 件事：
+
+1. **启用嵌入式 V 免签** 打开
+2. **通讯密钥** 点右侧「随机生成」按钮，会自动填入一个 32 位随机串
+3. **订单超时** 建议 `10` 分钟，**心跳超时** 建议 `60` 秒，**金额错位方向** 选「递增」
+
+最下方会看到一个运行状态面板：**监控 App 离线 / 最后心跳 / 最后到账**。此时 App 还没连上来，离线正常。
+
+### 4.2 配置可见的支付方式
+
+* **支付配置 → 支付方式**
+
+找到 `vwx`（微信扫码）和 `vzfb`（支付宝扫码）两条记录：
+
+* **支付处理模块 pay_handleroute**：填 `vmq`（如果原来是 `vpay`，升级脚本会自动迁移）
+* **支付标识 pay_check**：`vwx` 或 `vzfb`
+* **支付方式**：选「扫码」
+* **商户 ID / 商户密钥 / 商户 KEY**：**全部留空**（嵌入式模式不使用，留着反而会误导）
+* 打开「启用」
+
+保存即可。**绝对不要**在「商户密钥」里填什么 `https://xxx.com/`，那是外置监控端模式的用法；嵌入式模式下留空即可。
+
+### 4.3（可选）上传固定金额收款码
+
+* **支付配置 → V 免签 收款码**
+
+在这里你可以把自己微信/支付宝里截图出来的 **固定金额** 付款码上传：
+
+* 类型：1=微信，2=支付宝
+* 金额：精确到分，如 `1.99`
+* 收款 URL：长按二维码图解出来的 `https://...` 或 `wxp://...`
+* 启用：打开
+
+当用户下单金额恰好 == 上传的金额（经过金额错位后的那个金额）时，会直接显示你的固定二维码，而不是动态二维码。**不上传也能跑**，嵌入式模式会动态生成带金额的收款链接。
+
+---
+
+## 5. 安卓监控 App 配置
+
+下载 [VmqApk](https://github.com/szvone/VmqApk/releases)（任意社区分支都兼容，协议一致）。
+
+安装后进入**设置页**：
+
+| 字段 | 值 |
+| --- | --- |
+| 服务端地址 | `https://你的站点域名/` （**末尾一定要有斜杠**） |
+| 通讯密钥 | 和后台「V 免签 全局设置 → 通讯密钥」**完全一致** |
+| 心跳间隔 | `30` 秒 |
+
+保存后点「启动监控」。App 会：
+
+1. 每 30 秒调用 `POST /appHeart` 上报心跳
+2. 监听到微信/支付宝通知栏消息时，调用 `POST /appPush` 推送到账
+
+**关键：** 把这部手机放在一个**稳定电源**的地方，关闭系统省电/后台清理，否则 App 会被杀。
+
+回到后台「V 免签 全局设置」页面，刷新一下，状态应变成：
+
+> 监控 App：● 在线
+> 最后心跳：2026-xx-xx xx:xx:xx
+
+---
+
+## 6. 测试下单
+
+1. 退出后台，用普通用户下单，选「微信扫码」或「支付宝扫码」
+2. 跳到本站收银台（URL 形如 `/pay/vmq/cashier/订单号`）
+3. 页面显示倒计时 + 二维码 + 实际支付金额（**可能比原价 +0.01 或 -0.01**，这是金额错位，用来唯一识别）
+4. 用你绑定监控 App 的那部手机的微信/支付宝扫码 → 付款
+5. 30 秒内页面自动弹出「支付成功」并跳转
+
+---
+
+## 7. 常见故障
+
+### 7.1 App 一直显示离线
+
+* 确认 **服务端地址** 末尾有 `/`
+* 确认 **通讯密钥** 完全一致（区分大小写）
+* 打开后台 `支付配置 → V 免签 全局设置`，看最后心跳时间，如果时间不更新说明 App 根本没连上
+* 确认服务器 Web 防火墙放行 `POST /appHeart`（不要被 WAF 拦截）
+
+### 7.2 用户付款了但订单没履约
+
+* 查看 `storage/logs/laravel.log` 里有没有 `V免签 到账推送无匹配订单`
+* 很可能是**金额错位**，用户付款时金额和订单当前的 `vmq_pay_orders.really_price` 不一致
+* 进数据库 `SELECT * FROM vmq_pay_orders WHERE order_sn='xxx'` 查 `really_price`，和实际到账金额对比
+
+### 7.3 出现 `签名校验不通过`
+
+* 通讯密钥改了但 App 没同步，或者 App 的本地时钟偏差 > 5 分钟
+* 重新点「随机生成」通讯密钥，把新密钥同步到 App，并校准手机时间
+
+### 7.4 同金额并发
+
+默认启用了 `vmq_tmp_prices` 金额错位池。2 个用户同时下 10 元订单时，一个会被调成 10.01（或 9.99），最多尝试 10 次。大量并发时可以到「V 免签 全局设置 → 金额错位方向」切换递增/递减方向。
+
+---
+
+## 8. 定时任务（强烈建议）
+
+超时订单自动关闭。编辑 `crontab -e`：
+
+```
+* * * * * cd /var/www/dujiaoka && php artisan schedule:run >> /dev/null 2>&1
+```
+
+本项目已内置 `vmq:close-expired` 命令，会每分钟自动扫描 `state=0` 且已过期的 V 免签订单，置为已过期并释放金额锁。手工执行：
+
+```bash
+php artisan vmq:close-expired --dry-run   # 仅预览不写库
+php artisan vmq:close-expired             # 真正关闭
+```
+
+---
+
+## 9. 安全与性能建议
+
+* **通讯密钥** 不要用简单字符串，使用「随机生成」一键生成 32 位，并不要提交进 git
+* 把 `/appHeart`、`/appPush`、`/createOrder`、`/checkOrder` 几个接口放过 WAF 或 Rate limiter
+* 数据库 `vmq_pay_orders` 会越来越多，半年后可以手动归档/清理 `state != 0` 的历史记录
+* 如果要多人并发，建议 PHP-FPM ≥ 20 个进程，MySQL `innodb_buffer_pool_size ≥ 512M`
+
+---
+
+## 10. 回滚
+
+万一嵌入式模式出问题需要临时下线：
 
 ```sql
-CREATE DATABASE vmq DEFAULT CHARSET utf8mb4;
-CREATE USER 'vmq'@'localhost' IDENTIFIED BY '一个强密码';
-GRANT ALL ON vmq.* TO 'vmq'@'localhost';
-FLUSH PRIVILEGES;
+UPDATE pays SET enable = 0 WHERE pay_handleroute = 'vmq';
 ```
 
-把 `/var/www/vmq/.env.example` 复制成 `.env`，修改数据库连接：
+或者直接在 **V 免签 全局设置** 把「启用嵌入式 V 免签」关掉，所有用户无法再通过 V 免签下单，已有 waiting 订单不受影响。
 
-```ini
-APP_DEBUG=false
-APP_URL=https://vmq.your-site.com
-
-DB_CONNECTION=mysql
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_DATABASE=vmq
-DB_USERNAME=vmq
-DB_PASSWORD=一个强密码
-```
-
-### 4.3 初始化数据库
-
-```bash
-cd /var/www/vmq && \
-php artisan key:generate && \
-php artisan migrate --force && \
-php artisan db:seed --force
-```
-
-（不同版本命令可能不同，以仓库 README 为准。）
-
-### 4.4 配置 Nginx
-
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name vmq.your-site.com;
-
-    # SSL 证书（Let's Encrypt / 宝塔 / 自行签发都行）
-    ssl_certificate     /etc/letsencrypt/live/vmq.your-site.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/vmq.your-site.com/privkey.pem;
-
-    root /var/www/vmq/public;
-    index index.php index.html;
-
-    location / {
-        try_files $uri $uri/ /index.php?$query_string;
-    }
-
-    location ~ \.php$ {
-        include fastcgi_params;
-        fastcgi_pass unix:/run/php/php8.1-fpm.sock;   # 改成你 PHP 版本的 socket
-        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
-    }
-
-    access_log /var/log/nginx/vmq.access.log;
-    error_log  /var/log/nginx/vmq.error.log;
-}
-```
-
-重载：`nginx -t && systemctl reload nginx`
-
-### 4.5 权限
-
-```bash
-chown -R www-data:www-data /var/www/vmq/storage /var/www/vmq/bootstrap/cache
-chmod -R 775 /var/www/vmq/storage /var/www/vmq/bootstrap/cache
-```
-
-打开 `https://vmq.your-site.com/` 能看到登录页（默认账号 admin / admin，登录后第一时间改掉）。
+数据表不建议回滚删除，保留历史订单数据更安全。
 
 ---
 
-## 5. 监控端后台设置
+## 11. 接口协议（开发者速查）
 
-登录监控端后台，找到**系统设置 / 系统管理 / 后端配置**（不同版本菜单名略有不同）。**必须** 设置的 3 项：
+| 方法 | 路径 | 作用 | 调用方 |
+| --- | --- | --- | --- |
+| POST | `/createOrder` | V 免签兼容：外部下单 | 旧系统 / 调试 |
+| POST | `/checkOrder` | 本站收银台轮询订单 | 浏览器 |
+| POST | `/getOrder` | 查订单详情 | 外部 / 调试 |
+| POST | `/appHeart` | App 心跳 | 监控 App |
+| POST | `/appPush` | App 推送到账 | 监控 App |
+| POST | `/getState` | 查 App 在线状态（需要密钥） | 调试 |
+| GET | `/pay/vmq/cashier/{orderSN}` | 本站内置收银台 | 浏览器 |
+| GET | `/pay/vmq/qr/{orderSN}` | 动态二维码图片 | 浏览器 |
+| GET | `/pay/vmq/heart-public` | 公共 App 在线状态查询 | 浏览器 |
 
-| 项 | 填什么 | 说明 |
-| --- | --- | --- |
-| **通讯密钥 / key** | 点「生成」，得到一个 32 位随机串 | **极度重要**，一定要复制好，后面 dujiaoka 要填这个 |
-| 心跳超时（秒） | `60`–`120` | App 多久没上报就判定离线 |
-| 订单超时（秒） | `300` | 同 dujiaoka 的订单过期时间一致或稍大一点 |
-
-> **通讯密钥一定不要泄露给外部**，签名就靠这个。
-
----
-
-## 6. 安卓 App（监控 App）安装
-
-### 6.1 下载
-
-- 仓库：<https://github.com/szvone/VmqApk/releases>
-- 镜像：<https://gitee.com/isoundy/vmq-apk>（同步仓库里可能附 APK）
-
-直接下载最新的 `.apk` 安装到安卓手机上。
-
-### 6.2 App 里绑定监控端
-
-第一次打开 App：
-
-- **服务器地址**：填 `https://vmq.your-site.com`（就是第 4 步的监控端 URL）
-- **通讯密钥**：和监控端后台的「通讯密钥」**一字不差**
-- **心跳间隔**：默认 60 秒即可
-
-点"开始服务"后，App 会常驻通知栏，每隔几秒给监控端上报一次心跳。监控端后台可以在"设备管理"看到设备在线。
-
-### 6.3 让 App 活下去
-
-安卓系统会随便杀后台。务必做：
-
-1. 关闭电池优化：`设置 → 电池 → 电池优化 → 全部应用 → V免签监控 → 不优化`
-2. 自启动：`设置 → 应用管理 → V免签监控 → 允许自启动/后台运行/关联启动`
-3. 锁屏不清后台：`多任务界面长按 App → 锁定`
-4. 给微信、支付宝也开`通知权限`（监控 App 是靠读通知栏消息来识别到账的）
-
-> **推荐的做法**：找一台二手旧安卓手机，单独跑这个 App，24 小时开机充电常驻。云手机/安卓模拟器也行。
-
-### 6.4 手机里微信/支付宝收款设置
-
-- **支付宝**：打开"收款到账语音提醒"（首页搜"收款到账"即可开启），并在通知里保证"支付宝到账通知"能弹出来
-- **微信**：打开"收款到账语音提醒"（微信 → 我 → 服务 → 收付款 → 收款小账本 → 右上角 → 收款设置），确保"到账提醒"是开着的
-
-只要手机能"叮咚，到账 X 元"，监控 App 就能识别并上报。
-
----
-
-## 7. 回到 dujiaoka 配置
-
-登录 dujiaoka 后台 → **支付配置 → 支付通道 → 新建**
-
-### 7.1 微信通道
-
-| 字段 | 填什么 |
-| --- | --- |
-| 支付名称 `pay_name` | `V免签微信` |
-| 支付标识 `pay_check` | `vwx` |
-| 支付方式 `pay_method` | 选 **扫码** |
-| 支付场景 `pay_client` | 选 **通用** |
-| **支付处理模块 `pay_handleroute`** | `vmq` |
-| 通道费率 `pay_fee` | `0` |
-| 仅允许中国大陆下单 | 按需 |
-| 是否启用 | **打开** |
-| **商户 ID `merchant_id`** | 第 5 步生成的 **通讯密钥**（32 位） |
-| 商户 KEY `merchant_key` | 留空 |
-| **商户密钥 `merchant_pem`** | **监控端 URL**（例如 `https://vmq.your-site.com/`，结尾斜杠可省）。**绝对不能** 填你自己 dujiaoka 的域名 |
-| 支付宝证书区 | 全部留空 |
-
-保存。
-
-### 7.2 支付宝通道
-
-复制一份微信通道，只改两处：
-
-- 支付名称：`V免签支付宝`
-- 支付标识 `pay_check`：`vzfb`（**注意是 vzfb，不是 vwx**）
-
-保存。
-
-### 7.3 商品关联支付通道
-
-编辑商品 → 底部「支付方式限制」如果为空就表示"允许所有"；如果填了就要把 V免签 微信/支付宝的 ID 勾选进去。
-
----
-
-## 8. 下单测试
-
-1. 浏览商品 → 加入购物车 → 下单
-2. 在结账页选 V免签微信 → 立即支付
-3. 浏览器会 302 跳转到 `https://vmq.your-site.com/createOrder?payId=...&sign=...`
-4. 监控端挑选一部已绑定的手机，显示一张**带有你个人微信收款码的二维码**
-5. 用另一部手机的微信扫码付款（金额会比下单金额多/少几分钱，用来区分同时并发的订单）
-6. 付款后，手机 App 捕获到账通知 → 上报监控端 → 监控端 POST 到 dujiaoka 的 `/pay/vmq/notify`
-7. dujiaoka 验签通过 → 订单自动完成 → 结账页自动跳转到订单详情页
-
----
-
-## 9. 故障排查
-
-| 症状 | 原因 / 解决 |
-| --- | --- |
-| 点"立即支付"跳转后显示 404（**本站的**不是监控端的） | URL 里的 `driver` 不是 `vmq`；检查通道的`pay_handleroute` |
-| 跳转到监控端后返回 **监控端自己的 404** | 你的 `merchant_pem` 填错了，填成了**非监控端**的域名（比如填成 dujiaoka 自己的前台） |
-| 监控端提示 "签名错误" | 监控端"通讯密钥" 和 dujiaoka 的 `merchant_id` 不完全一致（大小写、空格） |
-| 监控端提示 "没有可用设备" | App 掉线了。检查 App 的服务器地址、通讯密钥、网络，并检查手机是否因省电被杀 |
-| 付款成功但订单不自动完成 | `storage/logs/laravel-*.log` 里看 `Vmq notify`，若没收到说明监控端的"回调地址"没填成 `https://dujiaoka站点/pay/vmq/notify`；若收到但 `sign mismatch` 同上"签名错误" |
-| 付款金额和订单金额差几分 | V免签靠"到账金额唯一性"匹配订单，这几分钱是监控端自动加/减的，正常现象 |
-
-### 日志位置
-
-- dujiaoka：`storage/logs/laravel-*.log`，驱动里所有关键节点都会记录（`VmqDriver createOrder` / `Vmq notify received` / `Vmq notify: order completed`）
-- 监控端：看对应版本的日志目录
-
-### 启用详细错误页（临时调试）
-
-dujiaoka 的 `.env`：
-
-```ini
-APP_DEBUG=true
-APP_ENV=local
-```
-
-改完跑 `php artisan config:clear`。调通后记得改回 `APP_DEBUG=false`。
-
----
-
-## 10. 安全建议
-
-1. 监控端和 dujiaoka **必须** HTTPS（不然中间人可以篡改回调金额）
-2. 监控端后台默认 `admin/admin`，**第一件事** 改强密码
-3. 通讯密钥泄露等于有人可以伪造成功回调 → 泄露后立即重新生成一个，两边（监控端 + dujiaoka 的 `merchant_id`）**同时** 更新
-4. 监控端防爬虫：可以在 Nginx 前加一层 Cloudflare / 给 `/createOrder` 放开但其它路径做 WAF
-5. 建议不要在同一台服务器跑监控端 + dujiaoka，一旦被攻破 = 订单金额被任意伪造
-
----
-
-## 附录 A：字段对照表
-
-dujiaoka 后台「支付通道」的 4 个关键字段，和 V 免签侧的对应：
-
-| dujiaoka 字段 | 对应 V免签 / 协议概念 |
-| --- | --- |
-| `pay_handleroute` | 驱动名，填 `vmq` |
-| `pay_check` | URL 里的 `payway`，决定 `type=1` 或 `type=2`（本驱动已改为智能识别，填 `vwx` 走微信，填 `vzfb` 走支付宝） |
-| `merchant_id` | V免签 通讯密钥（32 位） |
-| `merchant_pem` | V免签 监控端完整 URL |
-| `merchant_key` | **不使用**，留空 |
-
-## 附录 B：回调 URL（告诉监控端的）
-
-在 V 免签监控端后台"商户设置 / 回调地址"（不同版本叫法不一）填：
+签名规则（`appHeart` / `appPush` / `getState`）：
 
 ```
-https://你的dujiaoka站点/pay/vmq/notify
+sign = md5(type + price + t + key)
 ```
 
-> 结尾**不要加**斜杠、不要加查询串。
+* `t` 是毫秒时间戳，容差 5 分钟
+* `key` 就是后台的「通讯密钥」
+* 所有参数均为 POST form-data
 
-本项目的 `pay/*` 已在 CSRF 白名单，监控端可直接 POST 进来。
+---
+
+OK，到这里嵌入式 V 免签就跑起来了。享受**零手续费、零第三方**的个人免签收款吧。

@@ -124,24 +124,23 @@ class Payments extends Resource
                     ]),
 
                 Forms\Components\Section::make(__('pay.labels.vmq_section'))
-                    ->description(__('pay.helps.vmq_section'))
+                    ->description('嵌入式 V免签：本站即监控端，无需额外部署 PHP 监控项目，一台服务器 + 一部安卓监控 App 即可')
                     ->collapsible()
                     ->collapsed(fn ($record) => !$record || $record->pay_handleroute !== 'vmq')
                     ->schema([
                         Forms\Components\Placeholder::make('vmq_guide')
-                            ->label('配置步骤')
+                            ->label('嵌入式 V免签 配置步骤')
                             ->content(new \Illuminate\Support\HtmlString(
-                                '<p style="margin:0 0 10px 0;color:#b45309;"><strong>注意</strong>：V免签必须搭配<strong>独立部署的监控端</strong>（如 vmqphp/VMQ）和<strong>一部安卓监控 App</strong>才能使用。<strong>下方「商户密钥」一定要填监控端的完整 URL，绝对不能填本站自己的域名</strong>，否则会 404。</p>
+                                '<p style="margin:0 0 10px 0;color:#0f766e;"><strong>架构说明</strong>：本站已内置 V免签 监控端，<strong>不再需要</strong>独立的 vmqphp/VMQ 监控 URL。下方商户字段保持默认即可，真正的通讯密钥请到 <code>支付配置 → V免签 全局设置</code> 中维护。</p>
                                 <ol style="margin:0;padding-left:18px;line-height:1.9;">
-                                    <li><strong>基础信息 → 支付处理模块 pay_handleroute</strong> 填 <code>vmq</code></li>
-                                    <li><strong>基础信息 → 支付标识 pay_check</strong>：微信扫码填 <code>vwx</code>，支付宝扫码填 <code>vzfb</code></li>
-                                    <li><strong>基础信息 → 支付方式</strong> 选「扫码」</li>
-                                    <li><strong>商户凭据 → 商户 ID</strong> 填 V免签监控端里的「通讯密钥」（32 位随机串）</li>
-                                    <li><strong>商户凭据 → 商户密钥</strong> 填 V免签监控端 URL（例如 <code>https://vmq.your-site.com/</code>）</li>
-                                    <li><strong>商户凭据 → 商户 KEY</strong> 留空即可</li>
-                                    <li>在 V免签监控端里把回调地址设置为本站的 <code>/pay/vmq/notify</code>（URL 结尾不要加斜杠）</li>
+                                    <li><strong>支付处理模块 pay_handleroute</strong> 填 <code>vmq</code></li>
+                                    <li><strong>支付标识 pay_check</strong>：微信扫码填 <code>vwx</code>，支付宝扫码填 <code>vzfb</code></li>
+                                    <li><strong>支付方式</strong> 选「扫码」</li>
+                                    <li><strong>商户 ID / 商户密钥 / 商户 KEY</strong>：三项留空即可（嵌入式模式不使用）</li>
+                                    <li>到 <code>支付配置 → V免签 全局设置</code> 配置「通讯密钥」，并在安卓 App 里填入本站 URL <code>' . url('/') . '</code> 与同一串密钥</li>
+                                    <li>（可选）到 <code>V免签 → 收款码管理</code> 上传固定金额的微信/支付宝收款码</li>
                                 </ol>
-                                <p style="margin:10px 0 0 0;color:#374151;">完整从 0 到跑通的部署/App 安装/故障排查手册：<code>docs/V免签部署与接入指南.md</code></p>'
+                                <p style="margin:10px 0 0 0;color:#b45309;"><strong>安全提示</strong>：通讯密钥泄露后任何人都可伪造到账，请妥善保管；本站自动对 <code>/appHeart</code>、<code>/appPush</code>、<code>/createOrder</code> 等接口免 CSRF，但仍然通过 MD5 签名校验。</p>'
                             )),
                     ]),
             ]);

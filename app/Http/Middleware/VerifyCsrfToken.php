@@ -21,5 +21,13 @@ class VerifyCsrfToken extends Middleware
     protected $except = [
         'pay/*',
         'install',
+        // 嵌入式 V免签 App/第三方 API 端点（不能携带 CSRF token）
+        'createOrder',
+        'checkOrder',
+        'getOrder',
+        'appHeart',
+        'appPush',
+        'getState',
+        'pay/vmq/*',
     ];
 }
